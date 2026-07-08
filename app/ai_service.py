@@ -60,3 +60,94 @@ def analyze_business_problem(problem: str):
         "Week 4: Review progress and plan next actions."
     ]
 } 
+import os
+import google.generativeai as genai
+from dotenv import load_dotenv
+
+load_dotenv()
+
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+
+model = genai.GenerativeModel("gemini-2.5-flash")
+
+def ask_ai(prompt: str):
+
+    system_prompt = """
+You are Falcon AI.
+
+You are an advanced AI assistant.
+
+The conversation history below is your memory.
+
+Always answer using the conversation history.
+
+If the user asks:
+- What did I say before?
+- What was my previous message?
+- What did you just tell me?
+
+Answer from the conversation history.
+
+Never say:
+'I don't have memory.'
+Never say:
+'I cannot remember previous conversations.'
+
+Only answer using the conversation history provided.
+"""
+
+    full_prompt = system_prompt + "\n\n" + prompt
+
+    response = model.generate_content(full_prompt)
+
+    return response.text
+
+def generate_chat_title(message: str):
+    prompt = f"""
+Generate a very short chat title (maximum 5 words).
+
+Message:
+{message}
+
+Return ONLY the title.
+"""
+
+    response = model.generate_content(prompt)
+    return response.text.strip()
+
+import json
+
+
+def extract_memory(message: str):
+    prompt = f"""
+Extract important personal facts from this message.
+
+Return ONLY valid JSON.
+
+Example:
+
+{{
+    "name":"Muhammad",
+    "project":"Falcon AI"
+}}
+
+If there are no personal facts, return:
+
+{{}}
+
+Message:
+
+{message}
+"""
+
+    response = model.generate_content(prompt)
+
+    text = response.text.strip()
+
+    # Remove Markdown code blocks if Gemini adds them
+    text = text.replace("```json", "").replace("```", "").strip()
+
+    try:
+        return json.loads(text)
+    except Exception:
+        return {}

@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# Keep frontend source helper folders visible despite Python lib/ ignore rules
+!frontend/src/lib/
+!frontend/src/lib/.gitkeep
