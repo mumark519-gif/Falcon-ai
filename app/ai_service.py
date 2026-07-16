@@ -62,6 +62,7 @@ def analyze_business_problem(problem: str):
 } 
 import os
 import google.generativeai as genai
+from app.agents.router import get_system_prompt
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -72,10 +73,8 @@ model = genai.GenerativeModel("gemini-2.5-flash")
 
 def ask_ai(prompt: str):
 
-    system_prompt = """
-You are Falcon AI.
+    system_prompt = get_system_prompt(prompt) + """
 
-You are an advanced AI assistant.
 
 The conversation history below is your memory.
 

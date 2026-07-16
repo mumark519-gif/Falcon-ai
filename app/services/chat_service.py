@@ -1,4 +1,5 @@
 from app.services.memory_service import search_memories
+from app.services.vector_service import search_documents
 from app.database import SessionLocal
 from app.models import Conversation, Chat, Memory
 from app.ai_service import (
@@ -61,6 +62,15 @@ def chat(request, current_user):
        prompt += f"{msg.role}: {msg.message}\n"
 
     # Ask AI
+    knowledge = search_documents(
+        current_user,
+        request.message
+    )
+    if knowledge:
+
+        prompt += "\n\nRelevant knowledge from uploaded documents:\n"
+
+        prompt += knowledge
     answer = ask_ai(prompt)
 
     # Extract memory

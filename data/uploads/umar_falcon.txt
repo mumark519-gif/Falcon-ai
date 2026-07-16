@@ -1,0 +1,7 @@
+Falcon AI was created by Muhammad Umar.
+
+Falcon AI is an enterprise AI platform.
+
+Falcon AI uses FastAPI, ChromaDB, Gemini AI, and Sentence Transformers.
+
+The goal of Falcon AI is to become one of the world's best AI companies.
