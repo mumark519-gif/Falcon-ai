@@ -1,45 +1,86 @@
-from app.database import SessionLocal
+from fastapi import HTTPException
+
 from app.auth import (
+    create_access_token,
     hash_password,
     verify_password,
-    create_access_token,
 )
 
-users = {}
+from app.database import SessionLocal
+from app.models import User as UserModel
+
 
 def register(user):
 
-    if user.username in users:
+    db = SessionLocal()
+
+    try:
+        existing_user = (
+            db.query(UserModel)
+            .filter(
+                UserModel.username == user.username
+            )
+            .first()
+        )
+
+        if existing_user:
+            return {
+                "error": "User already exists"
+            }
+
+        new_user = UserModel(
+            username=user.username,
+            password=hash_password(user.password),
+        )
+
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+
         return {
-            "error": "User already exists"
+            "message": "User registered successfully"
         }
 
-    users[user.username] = hash_password(user.password)
+    finally:
+        db.close()
 
-    return {
-        "message": "User registered successfully"
-    }
 
 def login(form_data):
 
-    if form_data.username not in users:
+    db = SessionLocal()
+
+    try:
+        user = (
+            db.query(UserModel)
+            .filter(
+                UserModel.username == form_data.username
+            )
+            .first()
+        )
+
+        if not user:
+            return {
+                "error": "Invalid username or password"
+            }
+
+        if not verify_password(
+            form_data.password,
+            user.password,
+        ):
+            return {
+                "error": "Invalid username or password"
+            }
+
+        token = create_access_token(
+            {
+                "sub": user.username
+            }
+        )
+
         return {
-            "error": "Invalid username or password"
+            "access_token": token,
+            "token_type": "bearer"
         }
 
-    if not verify_password(
-        form_data.password,
-        users[form_data.username]
-    ):
-        return {
-            "error": "Invalid username or password"
-        }
-
-    token = create_access_token(
-        {"sub": form_data.username}
-    )
-
-    return {
-        "access_token": token,
-        "token_type": "bearer"
-    }
+    finally:
+        db.close()
