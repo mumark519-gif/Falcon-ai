@@ -1,80 +1,106 @@
+import json
+
+import google.generativeai as genai
+
+from app.agents.router import get_system_prompt
+from app.core.config import settings
+
+
+genai.configure(
+    api_key=settings.GOOGLE_API_KEY
+)
+
+
+model = genai.GenerativeModel(
+    "gemini-2.5-flash"
+)
+
+
 def analyze_business_problem(problem: str):
     problem = problem.lower()
 
     analysis = []
 
     if "sales" in problem:
-        analysis.append("📈 Sales: Review your sales process and identify where customers are dropping off.")
+        analysis.append(
+            "📈 Sales: Review your sales process and identify where customers are dropping off."
+        )
 
     if "marketing" in problem:
-        analysis.append("📢 Marketing: Improve digital marketing, SEO, and social media campaigns.")
+        analysis.append(
+            "📢 Marketing: Improve digital marketing, SEO, and social media campaigns."
+        )
 
     if "customer" in problem:
-        analysis.append("👥 Customer Service: Reduce response times and improve customer satisfaction.")
+        analysis.append(
+            "👥 Customer Service: Reduce response times and improve customer satisfaction."
+        )
 
     if "finance" in problem or "money" in problem or "cost" in problem:
-        analysis.append("💰 Finance: Reduce unnecessary expenses and improve cash flow.")
+        analysis.append(
+            "💰 Finance: Reduce unnecessary expenses and improve cash flow."
+        )
 
     if "employee" in problem or "staff" in problem:
-        analysis.append("🏢 Human Resources: Invest in employee training and performance management.")
+        analysis.append(
+            "🏢 Human Resources: Invest in employee training and performance management."
+        )
 
     if "competition" in problem or "competitor" in problem:
-        analysis.append("⚔️ Competition: Analyze competitors and create a stronger value proposition.")
+        analysis.append(
+            "⚔️ Competition: Analyze competitors and create a stronger value proposition."
+        )
 
     if not analysis:
-        analysis.append("🚀 Overall Recommendation: Gather more business data before making strategic decisions.")
+        analysis.append(
+            "🚀 Overall Recommendation: Gather more business data before making strategic decisions."
+        )
 
     return {
-    "business_problem": problem,
-    "executive_summary": "Falcon AI analyzed the business problem and generated strategic recommendations.",
+        "business_problem": problem,
 
-    "recommendations": analysis,
+        "executive_summary": (
+            "Falcon AI analyzed the business problem and generated "
+            "strategic recommendations."
+        ),
 
-    "strengths": [
-        "Business is actively seeking improvement",
-        "Management is using AI for decision making"
-    ],
+        "recommendations": analysis,
 
-    "weaknesses": [
-        "Current issue requires attention",
-        "Limited business information available"
-    ],
+        "strengths": [
+            "Business is actively seeking improvement",
+            "Management is using AI for decision making",
+        ],
 
-    "opportunities": [
-        "Increase efficiency",
-        "Improve customer satisfaction",
-        "Expand market reach"
-    ],
+        "weaknesses": [
+            "Current issue requires attention",
+            "Limited business information available",
+        ],
 
-    "risks": [
-        "Revenue may continue declining",
-        "Competitors may gain market share"
-    ],
+        "opportunities": [
+            "Increase efficiency",
+            "Improve customer satisfaction",
+            "Expand market reach",
+        ],
 
-    "priority": "High",
+        "risks": [
+            "Revenue may continue declining",
+            "Competitors may gain market share",
+        ],
 
-    "action_plan": [
-        "Week 1: Collect business performance data.",
-        "Week 2: Implement Falcon AI recommendations.",
-        "Week 3: Measure results and adjust strategy.",
-        "Week 4: Review progress and plan next actions."
-    ]
-} 
-import os
-import google.generativeai as genai
-from app.agents.router import get_system_prompt
-from dotenv import load_dotenv
+        "priority": "High",
 
-load_dotenv()
+        "action_plan": [
+            "Week 1: Collect business performance data.",
+            "Week 2: Implement Falcon AI recommendations.",
+            "Week 3: Measure results and adjust strategy.",
+            "Week 4: Review progress and plan next actions.",
+        ],
+    }
 
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-
-model = genai.GenerativeModel("gemini-2.5-flash")
 
 def ask_ai(prompt: str):
 
     system_prompt = get_system_prompt(prompt) + """
-
 
 The conversation history below is your memory.
 
@@ -89,6 +115,7 @@ Answer from the conversation history.
 
 Never say:
 'I don't have memory.'
+
 Never say:
 'I cannot remember previous conversations.'
 
@@ -101,7 +128,9 @@ Only answer using the conversation history provided.
 
     return response.text
 
+
 def generate_chat_title(message: str):
+
     prompt = f"""
 Generate a very short chat title (maximum 5 words).
 
@@ -112,12 +141,12 @@ Return ONLY the title.
 """
 
     response = model.generate_content(prompt)
-    return response.text.strip()
 
-import json
+    return response.text.strip()
 
 
 def extract_memory(message: str):
+
     prompt = f"""
 Extract important personal facts from this message.
 
@@ -126,8 +155,8 @@ Return ONLY valid JSON.
 Example:
 
 {{
-    "name":"Muhammad",
-    "project":"Falcon AI"
+    "name": "Muhammad",
+    "project": "Falcon AI"
 }}
 
 If there are no personal facts, return:
@@ -143,10 +172,15 @@ Message:
 
     text = response.text.strip()
 
-    # Remove Markdown code blocks if Gemini adds them
-    text = text.replace("```json", "").replace("```", "").strip()
+    text = (
+        text
+        .replace("```json", "")
+        .replace("```", "")
+        .strip()
+    )
 
     try:
         return json.loads(text)
+
     except Exception:
         return {}

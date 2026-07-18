@@ -1,15 +1,16 @@
-import os
-from dotenv import load_dotenv
 from app.agents.business_agent import BUSINESS_PROMPT
 from app.agents.investment_agent import INVESTMENT_PROMPT
 from app.agents.coding_agent import CODING_PROMPT
 from app.agents.research_agent import RESEARCH_PROMPT
 from app.agents.classifier import CLASSIFIER_PROMPT
+from app.core.config import settings
+
 import google.generativeai as genai
 
-load_dotenv()
 
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+genai.configure(
+    api_key=settings.GOOGLE_API_KEY
+)
 
 
 def get_system_prompt(message: str):
@@ -27,7 +28,7 @@ def get_system_prompt(message: str):
         "crypto",
         "bitcoin",
         "finance",
-        "market"
+        "market",
     ]
 
     coding_keywords = [
@@ -41,7 +42,7 @@ def get_system_prompt(message: str):
         "program",
         "javascript",
         "react",
-        "sql"
+        "sql",
     ]
 
     business_keywords = [
@@ -52,7 +53,7 @@ def get_system_prompt(message: str):
         "company",
         "revenue",
         "profit",
-        "strategy"
+        "strategy",
     ]
 
     if any(word in text for word in investment_keywords):
@@ -66,11 +67,18 @@ def get_system_prompt(message: str):
 
     return RESEARCH_PROMPT
 
+
 def classify_agent(message: str):
 
-    model = genai.GenerativeModel("gemini-2.5-flash")
+    model = genai.GenerativeModel(
+        "gemini-2.5-flash"
+    )
 
-    prompt = CLASSIFIER_PROMPT + "\n\nQuestion:\n" + message
+    prompt = (
+        CLASSIFIER_PROMPT
+        + "\n\nQuestion:\n"
+        + message
+    )
 
     response = model.generate_content(prompt)
 
