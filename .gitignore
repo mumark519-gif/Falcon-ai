@@ -219,3 +219,15 @@ __marimo__/
 # Keep frontend source helper folders visible despite Python lib/ ignore rules
 !frontend/src/lib/
 !frontend/src/lib/.gitkeep
+# Environment variables
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# ChromaDB local data
+data/chroma/
+
+# Uploaded documents
+data/uploads/
