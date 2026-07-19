@@ -4,7 +4,7 @@ import google.generativeai as genai
 
 from app.agents.router import get_system_prompt
 from app.core.config import settings
-
+from google.api_core.exceptions import ResourceExhausted
 
 genai.configure(
     api_key=settings.GOOGLE_API_KEY
@@ -101,7 +101,7 @@ def analyze_business_problem(problem: str):
 def ask_ai(prompt: str):
 
     system_prompt = get_system_prompt(prompt) + """
-
+    
 The conversation history below is your memory.
 
 Always answer using the conversation history.
@@ -124,9 +124,18 @@ Only answer using the conversation history provided.
 
     full_prompt = system_prompt + "\n\n" + prompt
 
-    response = model.generate_content(full_prompt)
+    try:
+        response = model.generate_content(full_prompt)
 
-    return response.text
+        return response.text
+
+    except ResourceExhausted:
+
+        return (
+            "Falcon AI is temporarily unavailable because "
+            "the AI service quota has been reached. "
+            "Please try again later."
+        )
 
 
 def generate_chat_title(message: str):
@@ -140,9 +149,19 @@ Message:
 Return ONLY the title.
 """
 
-    response = model.generate_content(prompt)
+    try:
 
-    return response.text.strip()
+        response = model.generate_content(prompt)
+
+        return response.text.strip()
+
+    except ResourceExhausted:
+
+        return "New Chat"
+
+    except Exception:
+
+        return "New Chat"
 
 
 def extract_memory(message: str):
@@ -168,19 +187,25 @@ Message:
 {message}
 """
 
-    response = model.generate_content(prompt)
-
-    text = response.text.strip()
-
-    text = (
-        text
-        .replace("```json", "")
-        .replace("```", "")
-        .strip()
-    )
-
     try:
+
+        response = model.generate_content(prompt)
+
+        text = response.text.strip()
+
+        text = (
+            text
+            .replace("```json", "")
+            .replace("```", "")
+            .strip()
+        )
+
         return json.loads(text)
 
+    except ResourceExhausted:
+
+        return {}
+
     except Exception:
+
         return {}

@@ -1,16 +1,26 @@
+from sqlalchemy.orm import Session
+
 from app.services.memory_service import search_memories
 from app.services.vector_service import search_documents
-from app.database import SessionLocal
-from app.models import Conversation, Chat, Memory
+
+from app.models import (
+    Conversation,
+    Chat,
+    Memory,
+)
+
 from app.ai_service import (
     ask_ai,
     extract_memory,
     generate_chat_title,
 )
 
-def chat(request, current_user):
 
-    db = SessionLocal()
+def chat(
+    request,
+    current_user: str,
+    db: Session,
+):
 
     # Save user message
     db.add(
@@ -18,7 +28,7 @@ def chat(request, current_user):
             username=current_user,
             chat_id=request.chat_id,
             role="user",
-            message=request.message
+            message=request.message,
         )
     )
 
@@ -29,92 +39,112 @@ def chat(request, current_user):
         db.query(Conversation)
         .filter(
             Conversation.username == current_user,
-            Conversation.chat_id == request.chat_id
+            Conversation.chat_id == request.chat_id,
         )
         .order_by(Conversation.id)
         .all()
     )
 
     # Load memories
-    
     memories = search_memories(
-    current_user,
-    request.message
+        current_user,
+        request.message,
     )
 
     # Build prompt
     prompt = "You are Falcon AI.\n\n"
 
-
     if memories:
-      
 
-      prompt += "Known information about the user:\n"
+        prompt += (
+            "Known information about the user:\n"
+        )
 
-      for memory in memories:
-          prompt += f"{memory.key}: {memory.value}\n"
+        for memory in memories:
+            prompt += (
+                f"{memory.key}: "
+                f"{memory.value}\n"
+            )
 
-      prompt += "\n"
+        prompt += "\n"
 
     prompt += "Conversation:\n"
 
     for msg in messages:
-       prompt += f"{msg.role}: {msg.message}\n"
+        prompt += (
+            f"{msg.role}: "
+            f"{msg.message}\n"
+        )
 
-    # Ask AI
+    # Search uploaded documents
     knowledge = search_documents(
         current_user,
-        request.message
+        request.message,
     )
+
     if knowledge:
 
-        prompt += "\n\nRelevant knowledge from uploaded documents:\n"
+        prompt += (
+            "\n\nRelevant knowledge "
+            "from uploaded documents:\n"
+        )
 
         prompt += knowledge
+
+    # Ask AI
     answer = ask_ai(prompt)
 
     # Extract memory
-    memory = extract_memory(request.message)
-
-    print("========== MEMORY ==========")
-    print(memory)
+    extracted_memory = extract_memory(
+        request.message
+    )
 
     # Save memory
-    for key, value in memory.items():
+    for key, value in extracted_memory.items():
 
         existing_memory = (
             db.query(Memory)
             .filter(
                 Memory.username == current_user,
-                Memory.key == key
+                Memory.key == key,
             )
             .first()
         )
 
         if existing_memory:
+
             existing_memory.value = value
+
         else:
+
             db.add(
                 Memory(
                     username=current_user,
                     key=key,
-                    value=value
+                    value=value,
                 )
             )
+
     # Generate chat title
-    chat = (
+    chat_record = (
         db.query(Chat)
         .filter(
             Chat.id == request.chat_id,
-            Chat.username == current_user
+            Chat.username == current_user,
         )
         .first()
     )
 
-    if chat and chat.title == "New Chat":
-        chat.title = generate_chat_title(request.message)
+    if (
+        chat_record
+        and chat_record.title == "New Chat"
+    ):
 
-    db.commit()
+        chat_record.title = (
+            generate_chat_title(
+                request.message
+            )
+        )
 
     # Save AI response
     db.add(
@@ -122,13 +152,11 @@ def chat(request, current_user):
             username=current_user,
             chat_id=request.chat_id,
             role="assistant",
-            message=answer
+            message=answer,
         )
     )
 
     db.commit()
-
-    db.close()
 
     return {
         "response": answer
