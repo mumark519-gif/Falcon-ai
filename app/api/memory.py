@@ -45,3 +45,21 @@ def save_memory(
     return {
         "message": "Memory saved successfully"
     }
+
+@router.get("/memories")
+def get_memories(
+    current_user: str = Depends(get_current_user)
+):
+    db = SessionLocal()
+
+    memories = (
+        db.query(Memory)
+        .filter(
+            Memory.username == current_user
+        )
+        .all()
+    )
+
+    db.close()
+
+    return memories
