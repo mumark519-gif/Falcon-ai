@@ -239,3 +239,58 @@ def test_chat_with_mocked_ai(
 
     mock_ai.assert_called_once()
     mock_memory.assert_called_once()
+
+def test_chat_uses_uploaded_document():
+
+    login_response = client.post(
+        "/login",
+        data={
+            "username": "pytestuser",
+            "password": "testpassword"
+        }
+    )
+
+    token = login_response.json()["access_token"]
+
+    chat_create_response = client.post(
+         "/create_chat",
+         headers={
+             "Authorization": f"Bearer {token}"
+        },
+        json={
+            "title": "Document Chat"
+        }
+    )
+
+    assert chat_create_response.status_code == 200
+
+    chat_id = chat_create_response.json()["chat_id"]
+
+    upload_response = client.post(
+        "/upload",
+        headers={
+            "Authorization": f"Bearer {token}"
+        },
+        files={
+            "file": (
+                "falcon_knowledge.txt",
+                b"Falcon AI was created to help businesses analyze problems and make better decisions.",
+                "text/plain"
+            )
+        }
+    )
+
+    assert upload_response.status_code == 200
+
+    chat_response = client.post(
+        "/chat",
+        headers={
+            "Authorization": f"Bearer {token}"
+        },
+        json={
+            "chat_id": chat_id,
+            "message": "What was Falcon AI created to do?"
+        }
+    )
+
+    assert chat_response.status_code == 200
