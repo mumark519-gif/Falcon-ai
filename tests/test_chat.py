@@ -179,23 +179,28 @@ def test_delete_chat():
     assert data["message"] == "Chat deleted successfully"
 
 @patch(
-    "app.services.chat_service.ask_ai",
+    "app.services.chat_service.orchestrate",
     return_value="Mocked Falcon AI response"
 )
 @patch(
-    "app.services.chat_service.extract_memory",
+    "app.services.memory_manager.extract_memory",
     return_value={
         "favorite_color": "green"
     }
 )
 @patch(
-    "app.services.chat_service.generate_chat_title",
+    "app.services.chat_manager.generate_chat_title",
     return_value="Test Chat"
+)
+@patch(
+    "app.services.chat_service.create_plan",
+    return_value="1. Analyze the request\n2. Answer the user"
 )
 def test_chat_with_mocked_ai(
     mock_title,
     mock_memory,
-    mock_ai
+    mock_ai,
+    mock_plan
 ):
 
     login_response = client.post(
@@ -239,8 +244,21 @@ def test_chat_with_mocked_ai(
 
     mock_ai.assert_called_once()
     mock_memory.assert_called_once()
+    mock_plan.assert_called_once()
 
-def test_chat_uses_uploaded_document():
+@patch(
+    "app.services.chat_service.create_plan",
+    return_value="Mocked execution plan"
+)
+@patch(
+    "app.services.chat_service.orchestrate",
+    return_value="Falcon AI was created to help businesses analyze problems and make better decisions."
+)
+
+def test_chat_uses_uploaded_document(
+    mock_orchestrate,
+    mock_plan
+):
 
     login_response = client.post(
         "/login",
@@ -294,3 +312,12 @@ def test_chat_uses_uploaded_document():
     )
 
     assert chat_response.status_code == 200
+
+    data = chat_response.json()
+
+    assert (
+        "businesses analyze problems"
+        in data["response"]
+    )
+
+    mock_orchestrate.assert_called_once()

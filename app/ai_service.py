@@ -1,5 +1,5 @@
 import json
-
+import time
 import google.generativeai as genai
 
 from app.agents.router import get_system_prompt
@@ -14,7 +14,8 @@ genai.configure(
 model = genai.GenerativeModel(
     "gemini-2.5-flash"
 )
-
+MAX_RETRIES = 3
+RETRY_DELAY = 2
 
 def analyze_business_problem(problem: str):
     problem = problem.lower()
@@ -124,18 +125,27 @@ Only answer using the conversation history provided.
 
     full_prompt = system_prompt + "\n\n" + prompt
 
-    try:
-        response = model.generate_content(full_prompt)
+    for attempt in range(MAX_RETRIES):
 
-        return response.text
+     try:
 
-    except ResourceExhausted:
+         response = model.generate_content(
+             full_prompt
+         )
 
-        return (
-            "Falcon AI is temporarily unavailable because "
-            "the AI service quota has been reached. "
-            "Please try again later."
-        )
+         return response.text
+
+     except ResourceExhausted:
+
+         if attempt == MAX_RETRIES - 1:
+
+             return (
+                 "Falcon AI is temporarily unavailable because "
+                 "the AI service quota has been reached. "
+                 "Please try again later."
+             )
+
+         time.sleep(RETRY_DELAY)
 
 
 def generate_chat_title(message: str):

@@ -1,19 +1,34 @@
 from sqlalchemy.orm import Session
-
+from app.core.logger import logger
 from app.services.memory_service import search_memories
 from app.services.vector_service import search_documents
+from app.agents.planner import create_plan
+import time
 
 from app.models import (
-    Conversation,
     Chat,
-    Memory,
 )
 
 from app.ai_service import (
-    ask_ai,
-    extract_memory,
     generate_chat_title,
 )
+from app.services.chat_manager import (
+    update_chat_title,
+)
+from app.services.chat_history_manager import (
+    load_chat_history,
+)
+from app.services.conversation_manager import (
+    save_message,
+)
+from app.services.prompt_builder import (
+    build_prompt,
+)
+from app.services.memory_manager import (
+    save_memories,
+)
+
+from app.agents.orchestrator import orchestrate
 
 
 def chat(
@@ -21,28 +36,25 @@ def chat(
     current_user: str,
     db: Session,
 ):
+    start_time = time.perf_counter()
 
     # Save user message
-    db.add(
-        Conversation(
-            username=current_user,
-            chat_id=request.chat_id,
-            role="user",
-            message=request.message,
-        )
+    save_message(
+        db=db,
+        username=current_user,
+        chat_id=request.chat_id,
+        role="user",
+        message=request.message,
+    )
+    logger.info(
+        f"User '{current_user}' sent a message."
     )
 
-    db.commit()
-
     # Load chat history
-    messages = (
-        db.query(Conversation)
-        .filter(
-            Conversation.username == current_user,
-            Conversation.chat_id == request.chat_id,
-        )
-        .order_by(Conversation.id)
-        .all()
+    messages = load_chat_history(
+        db=db,
+        username=current_user,
+        chat_id=request.chat_id,
     )
 
     # Load memories
@@ -51,30 +63,12 @@ def chat(
         request.message,
     )
 
-    # Build prompt
-    prompt = "You are Falcon AI.\n\n"
+    # Create execution plan
+    plan = create_plan(request.message)
 
-    if memories:
-
-        prompt += (
-            "Known information about the user:\n"
-        )
-
-        for memory in memories:
-            prompt += (
-                f"{memory.key}: "
-                f"{memory.value}\n"
-            )
-
-        prompt += "\n"
-
-    prompt += "Conversation:\n"
-
-    for msg in messages:
-        prompt += (
-            f"{msg.role}: "
-            f"{msg.message}\n"
-        )
+    logger.info(
+        "Execution plan created."
+    )
 
     # Search uploaded documents
     knowledge = search_documents(
@@ -82,81 +76,53 @@ def chat(
         request.message,
     )
 
-    if knowledge:
-
-        prompt += (
-            "\n\nRelevant knowledge "
-            "from uploaded documents:\n"
-        )
-
-        prompt += knowledge
-
-    # Ask AI
-    answer = ask_ai(prompt)
-
-    # Extract memory
-    extracted_memory = extract_memory(
-        request.message
+    prompt = build_prompt(
+        plan=plan,
+        memories=memories,
+        messages=messages,
+        knowledge=knowledge,
     )
 
-    # Save memory
-    for key, value in extracted_memory.items():
-
-        existing_memory = (
-            db.query(Memory)
-            .filter(
-                Memory.username == current_user,
-                Memory.key == key,
-            )
-            .first()
-        )
-
-        if existing_memory:
-
-            existing_memory.value = value
-
-        else:
-
-            db.add(
-                Memory(
-                    username=current_user,
-                    key=key,
-                    value=value,
-                )
-            )
-
-    # Generate chat title
-    chat_record = (
-        db.query(Chat)
-        .filter(
-            Chat.id == request.chat_id,
-            Chat.username == current_user,
-        )
-        .first()
+    logger.info(
+        "Running Falcon Orchestrator..."
     )
 
-    if (
-        chat_record
-        and chat_record.title == "New Chat"
-    ):
+    answer = orchestrate(
+        db=db,
+        username=current_user,
+        question=prompt,
+    )
+    logger.info(
+        "Falcon generated a response."
+    )
 
-        chat_record.title = (
-            generate_chat_title(
-                request.message
-            )
-        )
+    save_memories(
+        db=db,
+        username=current_user,
+        message=request.message,
+    )
+
+    # Update chat title
+    update_chat_title(
+        db=db,
+        username=current_user,
+        chat_id=request.chat_id,
+        first_message=request.message,
+    )
 
     # Save AI response
-    db.add(
-        Conversation(
-            username=current_user,
-            chat_id=request.chat_id,
-            role="assistant",
-            message=answer,
-        )
+    save_message(
+        db=db,
+        username=current_user,
+        chat_id=request.chat_id,
+        role="assistant",
+        message=answer,
     )
+    elapsed = time.perf_counter() - start_time
 
-    db.commit()
+    logger.info(
+        f"Request completed in {elapsed:.2f} seconds."
+    )
 
     return {
         "response": answer

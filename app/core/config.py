@@ -29,6 +29,10 @@ class Settings:
         "GOOGLE_API_KEY",
     )
 
+    TAVILY_API_KEY = os.getenv(
+        "TAVILY_API_KEY",
+    )
+
     ACCESS_TOKEN_EXPIRE_MINUTES = int(
         os.getenv(
             "ACCESS_TOKEN_EXPIRE_MINUTES",

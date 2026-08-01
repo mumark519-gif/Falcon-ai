@@ -83,3 +83,7 @@ def classify_agent(message: str):
     response = model.generate_content(prompt)
 
     return response.text.strip().upper()
+
+def route_agent(message: str):
+
+    return get_system_prompt(message)
