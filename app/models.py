@@ -6,6 +6,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    JSON,
 )
 
 from app.database import Base
@@ -106,3 +107,29 @@ class Memory(Base):
     key = Column(String)
 
     value = Column(String)
+
+class MemoryEmbedding(Base):
+
+    __tablename__ = "memory_embeddings"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
+
+    memory_id = Column(
+        Integer,
+        ForeignKey("memories.id"),
+        nullable=False,
+    )
+
+    model = Column(
+        String,
+        nullable=False,
+    )
+
+    embedding = Column(
+        JSON,
+        nullable=False,
+    )

@@ -11,9 +11,14 @@ from app.agents.execution_engine import execute_plan
 from app.services.research_context_builder import (
     build_research_context,
 )
-from app.services.memory_search import (
-    search_memories,
+from app.services.memory_provider import (
+    MemoryProvider,
 )
+
+from app.agents.reasoning_engine import (
+    reason_about_plan,
+)
+memory_provider = MemoryProvider()
 
 
 def run_business_agent(question: str):
@@ -70,7 +75,12 @@ def orchestrate(
         # Create execution plan
         plan = create_plan(question)
 
-        memories = search_memories(
+        reasoning = reason_about_plan(
+            question,
+            plan,
+        )
+
+        memories = memory_provider.search(
             db,
             username,
             question,
@@ -99,6 +109,10 @@ You are Falcon AI.
 Execution Plan:
 
 {plan}
+
+Reasoning:
+
+{reasoning}
 
 Research Context:
 

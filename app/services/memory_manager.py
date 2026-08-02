@@ -3,6 +3,9 @@ from app.ai_service import extract_memory
 from app.services.memory_classifier import (
     classify_memory,
 )
+from app.services.embedding_service import (
+    create_embedding,
+)
 
 
 def save_memories(
@@ -14,6 +17,15 @@ def save_memories(
     extracted_memory = extract_memory(
         message
     )
+
+    memory_embeddings = {}
+
+    for key, value in extracted_memory.items():
+
+        memory_embeddings[key] = create_embedding(
+            str(value)
+        )
+
     classified_memory = classify_memory(
         extracted_memory
     )
