@@ -6,6 +6,12 @@ from app.agents.task_executor import (
     run_investment_agent,
     run_research_agent,
 )
+AGENT_FUNCTIONS = {
+    "BUSINESS": run_business_agent,
+    "CODING": run_coding_agent,
+    "INVESTMENT": run_investment_agent,
+    "RESEARCH": run_research_agent,
+}
 async def run_async(
     func,
     question,
@@ -20,37 +26,16 @@ async def execute_parallel(tasks):
 
     for task in tasks:
 
-        agent = task["agent"]
-        question = task["task"]
+        agent = task.get("agent")
+        question = task.get("task", "")
 
-        if agent == "BUSINESS":
+        agent_function = AGENT_FUNCTIONS.get(agent)
+
+        if agent_function:
+
             coroutines.append(
                 run_async(
-                    run_business_agent,
-                    question,
-                )
-            )
-
-        elif agent == "CODING":
-            coroutines.append(
-                run_async(
-                    run_coding_agent,
-                    question,
-                )
-            )
-
-        elif agent == "INVESTMENT":
-            coroutines.append(
-                run_async(
-                    run_investment_agent,
-                    question,
-                )
-            )
-
-        elif agent == "RESEARCH":
-            coroutines.append(
-                run_async(
-                    run_research_agent,
+                    agent_function,
                     question,
                 )
             )

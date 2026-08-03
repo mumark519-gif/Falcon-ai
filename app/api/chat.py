@@ -7,6 +7,7 @@ import app.services.chat_service as chat_service
 from app.auth import get_current_user
 from app.database import get_db
 from app.models import Conversation, Chat
+from fastapi.responses import StreamingResponse
 
 
 router = APIRouter()
@@ -176,3 +177,25 @@ def get_chat_messages(
     )
 
     return messages
+
+@router.post("/chat-stream")
+def chat_stream(
+    request: ChatRequest,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+
+    def stream():
+
+        result = chat_service.chat(
+            request,
+            current_user,
+            db,
+        )
+
+        yield result["response"]
+
+    return StreamingResponse(
+        stream(),
+        media_type="text/plain",
+    )

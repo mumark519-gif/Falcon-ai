@@ -6,6 +6,10 @@ from app.agents.router import get_system_prompt
 from app.core.config import settings
 from google.api_core.exceptions import ResourceExhausted
 
+from app.services.ai.gemini_provider import (
+    ask_gemini,
+)
+
 genai.configure(
     api_key=settings.GOOGLE_API_KEY
 )
@@ -129,11 +133,9 @@ Only answer using the conversation history provided.
 
      try:
 
-         response = model.generate_content(
-             full_prompt
+         return ask_gemini(
+             full_prompt,
          )
-
-         return response.text
 
      except ResourceExhausted:
 

@@ -22,6 +22,8 @@ class SimpleBrowserProvider(
                 timeout=10,
             )
 
+            response.raise_for_status()
+
             soup = BeautifulSoup(
                 response.text,
                 "html.parser",

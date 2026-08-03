@@ -60,6 +60,34 @@ def run_research_agent(
         question,
         context,
     )
+
+AGENT_RUNNERS = {
+    "BUSINESS": (
+        run_business_agent,
+        "business",
+        "Business agent failed.",
+        "Business agent could not complete the task.",
+    ),
+    "CODING": (
+        run_coding_agent,
+        "coding",
+        "Coding agent failed.",
+        "Coding agent could not complete the task.",
+    ),
+    "INVESTMENT": (
+        run_investment_agent,
+        "investment",
+        "Investment agent failed.",
+        "Investment agent could not complete the task.",
+    ),
+    "RESEARCH": (
+        run_research_agent,
+        "research",
+        "Research agent failed.",
+        "Research agent could not complete the task.",
+    ),
+}
+
 def execute_tasks(
     plan: dict,
     question: str,
@@ -94,83 +122,26 @@ def execute_tasks(
             question
         )
 
-        if agent == "BUSINESS":
+        runner = AGENT_RUNNERS.get(agent)
 
-            try:
-                results["business"] = run_business_agent(
-                    task,
-                    agent_context,
-                )
+        if runner is None:
+            continue
 
-            except Exception:
+        agent_function, result_key, error_log, error_message = runner
 
-                logger.exception(
-                    "Business agent failed."
-                )
+        try:
 
-                results["business"] = (
-                    "Business agent could not complete the task."
-                )
+            results[result_key] = agent_function(
+                task,
+                agent_context,
+            )
 
+        except Exception:
 
-        elif agent == "CODING":
+            logger.exception(
+                error_log,
+            )
 
-            try:
-                results["coding"] = (
-                    run_coding_agent(
-                        task,
-                        agent_context,
-                    )
-                )
-
-            except Exception:
-
-                logger.exception(
-                    "Coding agent failed."
-               )
-
-                results["coding"] = (
-                    "Coding agent could not complete the task."
-                )
-
-        elif agent == "INVESTMENT":
-
-            try:
-                results["investment"] = (
-                    run_investment_agent(
-                        task,
-                        agent_context,
-                    )
-                )
-
-            except Exception:
-
-                logger.exception(
-                    "Investment agent failed."
-                )
-
-                results["investment"] = (
-                   "Investment agent could not complete the task."
-                )
-
-        elif agent == "RESEARCH":
-
-            try:
-                results["research"] = (
-                    run_research_agent(
-                        task,
-                        agent_context,
-                    )
-                )
-
-            except Exception:
-
-                logger.exception(
-                    "Research agent failed."
-                )
-
-                results["research"] = (
-                    "Research agent could not complete the task."
-                )
+            results[result_key] = error_message
 
     return results

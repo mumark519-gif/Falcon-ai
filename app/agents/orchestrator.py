@@ -8,7 +8,7 @@ from app.ai_service import ask_ai
 from app.core.logger import logger
 from app.agents.execution_engine import execute_plan
 
-from app.services.research_context_builder import (
+from app.agents.research_engine import (
     build_research_context,
 )
 from app.services.memory_provider import (
@@ -17,6 +17,13 @@ from app.services.memory_provider import (
 
 from app.agents.reasoning_engine import (
     reason_about_plan,
+)
+from app.agents.tool_reasoner import (
+    decide_tool_usage,
+)
+from app.agents.rule_engine import (
+    should_use_web,
+    should_use_documents,
 )
 memory_provider = MemoryProvider()
 
@@ -75,7 +82,16 @@ def orchestrate(
         # Create execution plan
         plan = create_plan(question)
 
+        use_web = should_use_web(question)
+
+        use_documents = should_use_documents(question)
+
         reasoning = reason_about_plan(
+            question,
+            plan,
+        )
+
+        tool_reasoning = decide_tool_usage(
             question,
             plan,
         )
@@ -90,6 +106,8 @@ def orchestrate(
             username=username,
             plan=plan,
             question=question,
+            use_web=use_web,
+            use_documents=use_documents,
         )
 
         tool_results = execution_results["tools"]
@@ -113,6 +131,10 @@ Execution Plan:
 Reasoning:
 
 {reasoning}
+
+Tool Reasoning:
+
+{tool_reasoning}
 
 Research Context:
 

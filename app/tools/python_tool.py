@@ -28,10 +28,18 @@ def python_tool(
 
         if result.returncode == 0:
 
-            return result.stdout
+            return {
+                "success": True,
+                "output": result.stdout,
+            }
 
-        return result.stderr
+        return {
+            "success": False,
+            "error": result.stderr,
+        }
 
     finally:
 
-        os.remove(filename)
+        if os.path.exists(filename):
+
+            os.remove(filename)
