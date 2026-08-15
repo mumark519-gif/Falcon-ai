@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: falcon-api}
+spec:
+  replicas: 2
+  selector: {matchLabels: {app: falcon-api}}
+  template:
+    metadata: {labels: {app: falcon-api}}
+    spec:
+      containers:
+      - name: falcon-api
+        image: falcon-ai:latest
+        ports: [{containerPort: 8000}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: falcon-api}
+spec:
+  selector: {app: falcon-api}
+  ports: [{port: 80, targetPort: 8000}]
