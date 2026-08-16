@@ -1,5 +1,21 @@
 import React, { useEffect, useState } from "react";
-import { ChatSummary, listChats, searchChats, deleteChat, logout } from "../lib/api";
+import {
+  ChatSummary,
+  listChats,
+  searchChats,
+  deleteChat,
+  logout,
+} from "../lib/api";
+
+type WorkspaceMode =
+  | "agents"
+  | "intelligence"
+  | "research"
+  | "business"
+  | "documents"
+  | "memory"
+  | "multimodal"
+  | "plugins";
 
 export default function Sidebar({
   activeChatId,
@@ -8,6 +24,7 @@ export default function Sidebar({
   refreshKey,
   username,
   onLoggedOut,
+  onOpenWorkspace,
 }: {
   activeChatId: number | null;
   onSelectChat: (id: number) => void;
@@ -15,13 +32,17 @@ export default function Sidebar({
   refreshKey: number;
   username: string;
   onLoggedOut: () => void;
+  onOpenWorkspace: (mode: WorkspaceMode) => void;
 }) {
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [query, setQuery] = useState("");
 
   const load = async () => {
     try {
-      const data = query.trim() ? await searchChats(query.trim()) : await listChats();
+      const data = query.trim()
+        ? await searchChats(query.trim())
+        : await listChats();
+
       setChats(data);
     } catch {
       /* transient network error -- keep showing the last known list */
@@ -39,12 +60,27 @@ export default function Sidebar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
-  const handleDelete = async (e: React.MouseEvent, id: number) => {
+  const handleDelete = async (
+    e: React.MouseEvent,
+    id: number
+  ) => {
     e.stopPropagation();
-    if (!confirm("Delete this chat? This can't be undone.")) return;
-    await deleteChat(id);
-    if (activeChatId === id) onNewChat();
-    load();
+
+    if (!confirm("Delete this chat? This can't be undone.")) {
+      return;
+    }
+
+    try {
+      await deleteChat(id);
+
+      if (activeChatId === id) {
+        onNewChat();
+      }
+
+      load();
+    } catch {
+      /* keep existing chat list if deletion fails */
+    }
   };
 
   return (
@@ -54,7 +90,11 @@ export default function Sidebar({
           <span className="brand-mark">◆</span>
           <span className="brand-name">FALCON AI</span>
         </div>
-        <button className="new-chat-btn" onClick={onNewChat}>
+
+        <button
+          className="new-chat-btn"
+          onClick={onNewChat}
+        >
           + New chat
         </button>
       </div>
@@ -67,23 +107,101 @@ export default function Sidebar({
         />
       </div>
 
+      <div className="workspace-nav">
+        <div className="workspace-nav-title">
+          WORKSPACE
+        </div>
+
+        <button
+          className="workspace-nav-btn"
+          onClick={() => onOpenWorkspace("agents")}
+        >
+          Agents
+        </button>
+
+        <button
+          className="workspace-nav-btn"
+          onClick={() => onOpenWorkspace("intelligence")}
+        >
+          Intelligence
+        </button>
+
+        <button
+          className="workspace-nav-btn"
+          onClick={() => onOpenWorkspace("research")}
+        >
+          Research
+        </button>
+
+        <button
+          className="workspace-nav-btn"
+          onClick={() => onOpenWorkspace("business")}
+        >
+          Business
+        </button>
+
+        <button
+          className="workspace-nav-btn"
+          onClick={() => onOpenWorkspace("documents")}
+        >
+          Documents
+        </button>
+
+        <button
+          className="workspace-nav-btn"
+          onClick={() => onOpenWorkspace("memory")}
+        >
+          Memory
+        </button>
+
+        <button
+          className="workspace-nav-btn"
+          onClick={() => onOpenWorkspace("multimodal")}
+        >
+          Multimodal
+        </button>
+
+        <button
+          className="workspace-nav-btn"
+          onClick={() => onOpenWorkspace("plugins")}
+        >
+          Plugins
+        </button>
+      </div>
+
       <nav className="chat-list">
         {chats.map((c) => (
           <div
             key={c.id}
-            className={`chat-list-item${c.id === activeChatId ? " active" : ""}`}
+            className={`chat-list-item${
+              c.id === activeChatId ? " active" : ""
+            }`}
             onClick={() => onSelectChat(c.id)}
           >
-            <span className="title">{c.title || "Untitled chat"}</span>
+            <span className="title">
+              {c.title || "Untitled chat"}
+            </span>
+
             <span className="row-actions">
-              <button className="icon-btn" onClick={(e) => handleDelete(e, c.id)} title="Delete chat">
+              <button
+                className="icon-btn"
+                onClick={(e) => handleDelete(e, c.id)}
+                title="Delete chat"
+              >
                 ✕
               </button>
             </span>
           </div>
         ))}
+
         {chats.length === 0 && (
-          <div style={{ color: "var(--text-faint)", fontSize: 12, padding: "10px 10px" }}>
+          <div
+            style={{
+              color: "var(--text-faint)",
+              fontSize: 12,
+              padding: "10px 10px",
+            }}
+          >
             No chats yet.
           </div>
         )}
@@ -91,6 +209,7 @@ export default function Sidebar({
 
       <div className="sidebar-footer">
         <span className="user-tag">@{username}</span>
+
         <button
           className="logout-btn"
           onClick={() => {

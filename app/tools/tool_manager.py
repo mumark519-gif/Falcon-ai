@@ -67,52 +67,64 @@ def register_default_tools() -> None:
     Safe to call repeatedly.
     """
 
-    if registry.exists("web_search"):
-        return
+    # Do not return early here based only on one tool.
+    #
+    # This makes registration robust if the registry was
+    # partially initialized.
+    #
+    # Each registration is protected independently.
 
-    registry.register(
-        name="web_search",
-        description=(
-            "Search the public web for current, "
-            "external, or time-sensitive information."
-        ),
-        executor=_web_search,
-        requires_permission=False,
-        retryable=True,
-    )
+    if not registry.exists("web_search"):
 
-    registry.register(
-        name="document_search",
-        description=(
-            "Search documents and knowledge uploaded "
-            "by the user."
-        ),
-        executor=_document_search,
-        requires_permission=False,
-        retryable=True,
-    )
+        registry.register(
+            name="web_search",
+            description=(
+                "Search the public web for current, "
+                "external, or time-sensitive information."
+            ),
+            executor=_web_search,
+            requires_permission=False,
+            retryable=True,
+        )
 
-    registry.register(
-        name="python",
-        description=(
-            "Execute Python for calculations, "
-            "data processing, analysis, and computation."
-        ),
-        executor=_python,
-        requires_permission=True,
-        retryable=False,
-    )
+    if not registry.exists("document_search"):
 
-    registry.register(
-        name="browser",
-        description=(
-            "Interact with or retrieve information "
-            "from supported web pages."
-        ),
-        executor=_browser,
-        requires_permission=True,
-        retryable=True,
-    )
+        registry.register(
+            name="document_search",
+            description=(
+                "Search documents and knowledge uploaded "
+                "by the user."
+            ),
+            executor=_document_search,
+            requires_permission=False,
+            retryable=True,
+        )
+
+    if not registry.exists("python"):
+
+        registry.register(
+            name="python",
+            description=(
+                "Execute Python for calculations, "
+                "data processing, analysis, and computation."
+            ),
+            executor=_python,
+            requires_permission=False,
+            retryable=False,
+        )
+
+    if not registry.exists("browser"):
+
+        registry.register(
+            name="browser",
+            description=(
+                "Interact with or retrieve information "
+                "from supported web pages."
+            ),
+            executor=_browser,
+            requires_permission=True,
+            retryable=True,
+        )
 
 
 # ============================================================
@@ -128,71 +140,167 @@ def _normalize_result(
     """
     Convert any tool output into Falcon's standard
     structured result format.
+
+    IMPORTANT:
+
+    A nested tool result containing status='error',
+    status='failed', or another failure state must remain
+    a failure.
+
+    It must never be incorrectly converted into a successful
+    ToolResult merely because the outer Python object is a dict.
     """
 
-    if isinstance(result, ToolResult):
+    # --------------------------------------------------------
+    # Canonical ToolResult
+    # --------------------------------------------------------
+
+    if isinstance(
+        result,
+        ToolResult,
+    ):
+
         result.attempts = attempts
 
         normalized = result.to_dict()
 
-    elif isinstance(result, dict):
+    # --------------------------------------------------------
+    # Dictionary result
+    # --------------------------------------------------------
 
-        if (
-            "tool" in result
-            and "status" in result
-        ):
-            normalized = dict(result)
+    elif isinstance(
+        result,
+        dict,
+    ):
+
+        result_status = str(
+            result.get(
+                "status",
+                "",
+            )
+        ).strip().lower()
+
+        # ----------------------------------------------------
+        # Explicit failure / blocked / permission state
+        # ----------------------------------------------------
+
+        if result_status in {
+            "error",
+            "failed",
+            "failure",
+            "blocked",
+            "permission_required",
+        }:
+
+            normalized = dict(
+                result
+            )
 
             normalized.setdefault(
                 "tool",
                 tool,
             )
 
-            normalized.setdefault(
-                "status",
-                "success",
+            normalized["status"] = (
+                result_status
             )
 
-            normalized["attempts"] = attempts
+            normalized["attempts"] = (
+                attempts
+            )
+
+        # ----------------------------------------------------
+        # Explicit success
+        # ----------------------------------------------------
+
+        elif result_status in {
+            "success",
+            "complete",
+            "completed",
+        }:
+
+            normalized = dict(
+                result
+            )
+
+            normalized.setdefault(
+                "tool",
+                tool,
+            )
+
+            normalized["status"] = (
+                result_status
+            )
+
+            normalized["attempts"] = (
+                attempts
+            )
+
+        # ----------------------------------------------------
+        # Legacy success/failure format
+        # ----------------------------------------------------
 
         elif "success" in result:
 
-            if result.get("success"):
+            if result.get(
+                "success",
+                False,
+            ):
 
-                normalized = ToolResult.success(
-                    tool=tool,
-                    output=result.get(
-                        "output"
-                    ),
-                    attempts=attempts,
-                ).to_dict()
+                normalized = (
+                    ToolResult.success(
+                        tool=tool,
+                        output=result.get(
+                            "output"
+                        ),
+                        attempts=attempts,
+                    ).to_dict()
+                )
 
             else:
 
-                normalized = ToolResult.failure(
-                    tool=tool,
-                    error=result.get(
-                        "error",
-                        "Tool execution failed.",
-                    ),
-                    attempts=attempts,
-                ).to_dict()
+                normalized = (
+                    ToolResult.failure(
+                        tool=tool,
+                        error=result.get(
+                            "error",
+                            "Tool execution failed.",
+                        ),
+                        attempts=attempts,
+                    ).to_dict()
+                )
+
+        # ----------------------------------------------------
+        # Unknown dictionary
+        # ----------------------------------------------------
 
         else:
 
-            normalized = ToolResult.success(
+            normalized = (
+                ToolResult.success(
+                    tool=tool,
+                    output=result,
+                    attempts=attempts,
+                ).to_dict()
+            )
+
+    # --------------------------------------------------------
+    # Raw result
+    # --------------------------------------------------------
+
+    else:
+
+        normalized = (
+            ToolResult.success(
                 tool=tool,
                 output=result,
                 attempts=attempts,
             ).to_dict()
+        )
 
-    else:
-
-        normalized = ToolResult.success(
-            tool=tool,
-            output=result,
-            attempts=attempts,
-        ).to_dict()
+    # --------------------------------------------------------
+    # Execution timing
+    # --------------------------------------------------------
 
     normalized["duration_ms"] = round(
         duration_ms,
@@ -231,7 +339,9 @@ def _validate_tool_definition(
         None,
     )
 
-    if not callable(executor):
+    if not callable(
+        executor
+    ):
 
         return (
             False,
@@ -293,10 +403,11 @@ def execute_tool(
     # Tool definition validation
     # --------------------------------------------------------
 
-    valid_definition, definition_error = (
-        _validate_tool_definition(
-            tool_name
-        )
+    (
+        valid_definition,
+        definition_error,
+    ) = _validate_tool_definition(
+        tool_name
     )
 
     if not valid_definition:
@@ -314,6 +425,47 @@ def execute_tool(
     definition = registry.get(
         tool_name
     )
+
+    # --------------------------------------------------------
+    # Defensive registry validation
+    # --------------------------------------------------------
+
+    if definition is None:
+
+        logger.error(
+            "Tool '%s' disappeared from the registry "
+            "after validation.",
+            tool_name,
+        )
+
+        return ToolResult.failure(
+            tool=tool_name,
+            error=(
+                f"Tool '{tool_name}' is not registered."
+            ),
+        ).to_dict()
+
+    executor = getattr(
+        definition,
+        "executor",
+        None,
+    )
+
+    if not callable(
+        executor
+    ):
+
+        logger.error(
+            "Tool '%s' has no callable executor.",
+            tool_name,
+        )
+
+        return ToolResult.failure(
+            tool=tool_name,
+            error=(
+                f"Tool '{tool_name}' has no valid executor."
+            ),
+        ).to_dict()
 
     # --------------------------------------------------------
     # Input validation
@@ -342,7 +494,34 @@ def execute_tool(
         permission = validate_permission(
             tool_name,
             approved=approved,
+            tool_input=tool_input,
         )
+
+    except TypeError:
+
+        # Backward compatibility with older permission
+        # functions that do not accept tool_input.
+        try:
+
+            permission = validate_permission(
+                tool_name,
+                approved=approved,
+            )
+
+        except Exception as exc:
+
+            logger.exception(
+                "Permission validation failed for tool '%s'.",
+                tool_name,
+            )
+
+            return ToolResult.failure(
+                tool=tool_name,
+                error=(
+                    "Tool permission validation failed: "
+                    + str(exc)
+                ),
+            ).to_dict()
 
     except Exception as exc:
 
@@ -431,10 +610,6 @@ def execute_tool(
                 max_attempts,
             )
 
-            executor: Callable[..., Any] = (
-                definition.executor
-            )
-
             result = executor(
                 username=username,
                 query=tool_input,
@@ -472,7 +647,9 @@ def execute_tool(
                 - started_at
             ) * 1000
 
-            last_error = str(exc)
+            last_error = str(
+                exc
+            )
 
             logger.exception(
                 "Tool '%s' failed on attempt %s/%s "
@@ -482,10 +659,6 @@ def execute_tool(
                 max_attempts,
                 duration_ms,
             )
-
-            # ------------------------------------------------
-            # Retry
-            # ------------------------------------------------
 
             if attempt < max_attempts:
 
@@ -539,12 +712,15 @@ def execute_tools(
     register_default_tools()
 
     if not tools:
-        # Automatically select tools from the question when callers do not
-        # provide an explicit list. This is the safe default for the public
-        # tool-manager API and keeps discovery separate from execution.
+
         from app.tools.tool_selector import select_tools
-        tools = select_tools(question)
+
+        tools = select_tools(
+            question
+        )
+
         if not tools:
+
             return {
                 "status": "empty",
                 "tools": {},
@@ -567,7 +743,6 @@ def execute_tools(
         )
 
         if not tool_name:
-
             continue
 
         try:
@@ -592,7 +767,9 @@ def execute_tools(
                 error=str(exc),
             ).to_dict()
 
-        results[tool_name] = result
+        results[
+            tool_name
+        ] = result
 
         status = str(
             result.get(
@@ -633,10 +810,13 @@ def execute_tools(
 
         overall_status = "failed"
 
-    # Historical API compatibility: older clients/tests used ``web`` as the
-    # result key while the canonical name is ``web_search``.
+    # Historical API compatibility.
     if "web_search" in results:
-        results.setdefault("web", results["web_search"])
+
+        results.setdefault(
+            "web",
+            results["web_search"],
+        )
 
     response = {
         "status": overall_status,
@@ -645,10 +825,19 @@ def execute_tools(
         "failed": failed,
         "total": total,
     }
+
     if "web_search" in results:
-        response["web"] = results["web_search"]
+
+        response["web"] = (
+            results["web_search"]
+        )
+
     elif "web" in results:
-        response["web"] = results["web"]
+
+        response["web"] = (
+            results["web"]
+        )
+
     return response
 
 

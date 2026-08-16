@@ -561,7 +561,6 @@ def execute_plan(
         "tools": {},
         "agents": {},
         "steps": [],
-        "context": context,
         "completed_steps": 0,
         "failed_steps": 0,
         "total_steps": 0,
@@ -662,9 +661,6 @@ def execute_plan(
                 ):
 
                     break
-
-                # Permission-required and blocked results
-                # should not be blindly retried.
 
                 result_data = execution.get(
                     "result",

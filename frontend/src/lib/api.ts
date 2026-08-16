@@ -207,3 +207,167 @@ export async function sendChat(chat_id: number, message: string) {
   });
   return res.json() as Promise<{ response: string; routing?: { provider: string; model: string } | null }>;
 }
+
+// ---- Falcon capabilities ----
+
+export interface AgentResult {
+  goal: string;
+  context?: Record<string, unknown>;
+  trace?: unknown;
+  plan?: unknown;
+  model?: unknown;
+  response?: string;
+  verification?: unknown;
+}
+
+export async function prepareAgent(
+  goal: string,
+  context: Record<string, unknown> = {}
+): Promise<AgentResult> {
+  const res = await request("/agents/prepare", {
+    method: "POST",
+    body: JSON.stringify({ goal, context }),
+  });
+  return res.json();
+}
+
+export async function runAgent(
+  goal: string,
+  context: Record<string, unknown> = {}
+): Promise<AgentResult> {
+  const res = await request("/agents/run", {
+    method: "POST",
+    body: JSON.stringify({ goal, context }),
+  });
+  return res.json();
+}
+
+export interface IntelligenceResult {
+  task_id: string;
+  plan: unknown;
+  execution: unknown;
+  reflection: unknown;
+  verification: unknown;
+  response: string;
+}
+
+export async function runIntelligence(
+  goal: string,
+  context: Record<string, unknown> = {}
+): Promise<IntelligenceResult> {
+  const res = await request("/intelligence/run", {
+    method: "POST",
+    body: JSON.stringify({ goal, context }),
+  });
+  return res.json();
+}
+
+export interface ResearchPlan {
+  query: string;
+  strategy: string[];
+}
+
+export async function planResearch(
+  query: string
+): Promise<ResearchPlan> {
+  const res = await request("/research/plan", {
+    method: "POST",
+    body: JSON.stringify({ query }),
+  });
+  return res.json();
+}
+
+export interface BusinessAnalysis {
+  problem: string;
+  analysis: unknown;
+}
+
+export async function analyzeBusiness(
+  problem: string
+): Promise<BusinessAnalysis> {
+  const res = await request("/analyze", {
+    method: "POST",
+    body: JSON.stringify({ problem }),
+  });
+  return res.json();
+}
+
+export interface Memory {
+  id?: number;
+  username?: string;
+  key: string;
+  value: string;
+}
+
+export async function saveMemory(
+  key: string,
+  value: string
+): Promise<{ message: string }> {
+  const res = await request("/memory", {
+    method: "POST",
+    body: JSON.stringify({ key, value }),
+  });
+  return res.json();
+}
+
+export async function getMemories(): Promise<Memory[]> {
+  const res = await request("/memories");
+  return res.json();
+}
+
+export interface MultimodalRequirements {
+  [key: string]: unknown;
+}
+
+export async function getMultimodalRequirements(
+  media_type: string
+): Promise<MultimodalRequirements> {
+  const res = await request("/multimodal/requirements", {
+    method: "POST",
+    body: JSON.stringify({ media_type }),
+  });
+  return res.json();
+}
+
+export async function getPlugins(): Promise<{
+  plugins: unknown[];
+}> {
+  const res = await request("/plugins");
+  return res.json();
+}
+
+export async function uploadDocument(
+  file: File
+): Promise<{
+  message: string;
+  filename: string;
+  characters: number;
+}> {
+  const token = getToken();
+
+  const form = new FormData();
+  form.append("file", file);
+
+  const res = await fetch(`${BASE}/upload`, {
+    method: "POST",
+    headers: token
+      ? { Authorization: `Bearer ${token}` }
+      : {},
+    body: form,
+  });
+
+  if (!res.ok) {
+    let detail = res.statusText;
+
+    try {
+      const data = await res.json();
+      detail = data.detail || data.error || detail;
+    } catch {
+      /* ignore */
+    }
+
+    throw new ApiError(detail, res.status);
+  }
+
+  return res.json();
+}

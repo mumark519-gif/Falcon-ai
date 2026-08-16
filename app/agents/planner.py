@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from app.services.ai.ai_gateway import generate as ask_ai
@@ -32,15 +33,14 @@ You are Falcon AI's Execution Planner.
 
 Your job is NOT to answer the user's question.
 
-Your job is to analyze the user's request and produce the
-smallest reliable execution plan required to solve it.
+Your job is to determine whether the request requires
+specialist reasoning, external tools, computation, or execution.
 
 Return ONLY valid JSON.
 
 Never use markdown.
 Never use code fences.
-Never explain the plan outside the JSON.
-Never answer the user's question directly.
+Never explain outside the JSON.
 
 Available specialist agents:
 
@@ -56,80 +56,54 @@ document_search
 python
 browser
 
-Valid step formats:
-
-Agent:
-
-{
-    "type": "agent",
-    "agent": "RESEARCH",
-    "task": "..."
-}
-
-Tool:
-
-{
-    "type": "tool",
-    "tool": "web_search",
-    "input": "..."
-}
-
 Rules:
 
-1. Use an agent when specialist reasoning is required.
+1. Simple conversation, greetings, acknowledgements,
+   confirmations, casual questions, and requests that can
+   be answered directly require NO execution plan.
 
-2. Use web_search when the request requires:
-   - current information
-   - latest information
-   - news
-   - external facts
-   - current prices
-   - current company information
-   - recent events
-   - external research
+2. For simple requests return:
 
-3. Use document_search when the user's uploaded documents,
-   files, reports, notes, or stored knowledge are relevant.
+{
+    "steps": []
+}
 
-4. Use python when actual computation, numerical analysis,
-   data processing, or code execution is required.
+3. Use CODING for software development, debugging,
+   programming, APIs, repositories, or code tasks.
 
-5. Use browser when the task requires reading a specific
-   webpage or URL.
+4. Use INVESTMENT for investment analysis, stocks,
+   portfolios, valuation, crypto, or financial decisions.
 
-6. Do not use tools unnecessarily.
+5. Use BUSINESS for business strategy, companies,
+   startups, sales, marketing, customers, or revenue.
 
-7. If a tool provides information needed by a later agent,
-   place the tool step before that agent.
+6. Use RESEARCH for genuine research, investigation,
+   comparison, synthesis, or specialist knowledge work.
 
-8. If multiple specialist agents are needed, execute them
-   in a logical dependency order.
+7. Use web_search for current, latest, recent, external,
+   news, prices, market data, or current company information.
 
-9. Do not create duplicate steps.
+8. Use document_search when uploaded documents are relevant.
 
-10. Do not create steps for work that another step already performs.
+9. Use python when actual computation, mathematical calculation,
+   numerical analysis, data processing, or executable Python
+   is required.
 
-11. For investment questions involving current or recent
-    information, normally research first and investment
-    analysis second.
+10. Use browser only when actual webpage interaction or reading
+    a supplied webpage is required.
 
-12. For business questions requiring current market information,
-    normally research/web first and business analysis afterward.
+11. Do not use tools unnecessarily.
 
-13. For coding questions, use the CODING agent unless actual
-    Python execution is explicitly required.
+12. Do not invent tools or agents.
 
-14. For simple questions that do not require tools or specialist
-    analysis, use the most appropriate single agent.
+13. Use the smallest reliable number of steps.
 
-15. Do not invent tools or agents.
+14. Never answer the user's question directly.
 
-16. Every step must contain all required fields.
+15. For mathematical/computational questions, prefer the Python
+    tool when actual calculation is required.
 
-17. Return an empty plan only when the request genuinely requires
-    no execution.
-
-Required JSON format:
+Required format:
 
 {
     "steps": [
@@ -141,109 +115,23 @@ Required JSON format:
     ]
 }
 
-Example:
-
-User:
-Should I invest in Apple stock?
-
-Output:
-
-{
-    "steps": [
-        {
-            "type": "tool",
-            "tool": "web_search",
-            "input": "Apple latest financial results valuation analyst outlook"
-        },
-        {
-            "type": "agent",
-            "agent": "RESEARCH",
-            "task": "Analyze Apple's latest financial and market information."
-        },
-        {
-            "type": "agent",
-            "agent": "INVESTMENT",
-            "task": "Evaluate Apple as an investment using the research findings."
-        }
-    ]
-}
-
-User:
-Fix my FastAPI authentication error.
-
-Output:
-
-{
-    "steps": [
-        {
-            "type": "agent",
-            "agent": "CODING",
-            "task": "Diagnose the FastAPI authentication error and provide the appropriate fix."
-        }
-    ]
-}
-
-User:
-Calculate 25 factorial using Python.
-
-Output:
+Python tool format:
 
 {
     "steps": [
         {
             "type": "tool",
             "tool": "python",
-            "input": "import math; print(math.factorial(25))"
+            "input": "..."
         }
     ]
 }
 
-User:
-Research NVIDIA's latest earnings and tell me whether it is a good investment.
-
-Output:
+For a simple request:
 
 {
-    "steps": [
-        {
-            "type": "tool",
-            "tool": "web_search",
-            "input": "NVIDIA latest earnings revenue profit guidance valuation"
-        },
-        {
-            "type": "agent",
-            "agent": "RESEARCH",
-            "task": "Analyze NVIDIA's latest earnings and relevant financial information."
-        },
-        {
-            "type": "agent",
-            "agent": "INVESTMENT",
-            "task": "Evaluate NVIDIA as an investment using the research findings."
-        }
-    ]
+    "steps": []
 }
-
-User:
-Read this webpage and summarize it.
-
-Output:
-
-{
-    "steps": [
-        {
-            "type": "tool",
-            "tool": "browser",
-            "input": "Read the webpage supplied by the user."
-        },
-        {
-            "type": "agent",
-            "agent": "RESEARCH",
-            "task": "Summarize and explain the webpage using the browser results."
-        }
-    ]
-}
-
-Always return valid JSON.
 """
 
 
@@ -257,7 +145,9 @@ def _clean_model_response(
     if not response:
         return ""
 
-    text = response.strip()
+    text = str(
+        response
+    ).strip()
 
     if text.startswith("```"):
         lines = text.splitlines()
@@ -268,7 +158,9 @@ def _clean_model_response(
         if lines and lines[-1].strip() == "```":
             lines = lines[:-1]
 
-        text = "\n".join(lines).strip()
+        text = "\n".join(
+            lines
+        ).strip()
 
     return text
 
@@ -280,11 +172,17 @@ def _normalize_step(
     Validate and normalize one planner step.
     """
 
-    if not isinstance(step, dict):
+    if not isinstance(
+        step,
+        dict,
+    ):
         return None
 
     step_type = str(
-        step.get("type", "")
+        step.get(
+            "type",
+            "",
+        )
     ).strip().lower()
 
     if step_type not in VALID_STEP_TYPES:
@@ -293,11 +191,17 @@ def _normalize_step(
     if step_type == "agent":
 
         agent = str(
-            step.get("agent", "")
+            step.get(
+                "agent",
+                "",
+            )
         ).strip().upper()
 
         task = str(
-            step.get("task", "")
+            step.get(
+                "task",
+                "",
+            )
         ).strip()
 
         if agent not in AVAILABLE_AGENTS:
@@ -315,11 +219,17 @@ def _normalize_step(
     if step_type == "tool":
 
         tool = str(
-            step.get("tool", "")
+            step.get(
+                "tool",
+                "",
+            )
         ).strip().lower()
 
         tool_input = str(
-            step.get("input", "")
+            step.get(
+                "input",
+                "",
+            )
         ).strip()
 
         if tool not in AVAILABLE_TOOLS:
@@ -347,7 +257,10 @@ def _validate_plan(
     model output to reach the execution engine.
     """
 
-    if not isinstance(plan, dict):
+    if not isinstance(
+        plan,
+        dict,
+    ):
         return {
             "steps": [],
         }
@@ -357,7 +270,10 @@ def _validate_plan(
         [],
     )
 
-    if not isinstance(raw_steps, list):
+    if not isinstance(
+        raw_steps,
+        list,
+    ):
         return {
             "steps": [],
         }
@@ -386,12 +302,15 @@ def _fallback_plan(
     question: str,
 ) -> dict[str, list[dict[str, Any]]]:
     """
-    Safe deterministic fallback when the planner fails.
+    Safe deterministic fallback when the planner model
+    is unavailable.
 
-    The fallback intentionally does not invent tool usage.
+    This function is intentionally deterministic so Falcon
+    can continue functioning even when every AI provider is
+    unavailable.
     """
 
-    question = (
+    question = str(
         question or ""
     ).strip()
 
@@ -401,6 +320,136 @@ def _fallback_plan(
         }
 
     text = question.lower()
+
+    # ========================================================
+    # SIMPLE CONVERSATION
+    # ========================================================
+
+    simple_patterns = [
+        r"^(hi|hello|hey|hola|salam|assalamualaikum)[!. ]*$",
+        r"^(thanks|thank you|ok|okay|alright|great|good)[!. ]*$",
+        r"^say hello",
+        r"^just say",
+        r"^confirm",
+        r"^can you confirm",
+        r"^are you there",
+        r"^how are you",
+        r"^what('?s| is) your name",
+        r"^who are you",
+        r"^good morning",
+        r"^good afternoon",
+        r"^good evening",
+        r"^good night",
+    ]
+
+    if any(
+        re.search(
+            pattern,
+            text,
+            re.I,
+        )
+        for pattern in simple_patterns
+    ):
+        return {
+            "steps": [],
+        }
+
+    # ========================================================
+    # COMPUTATION / PYTHON
+    # ========================================================
+
+    computation_patterns = [
+        r"\bfactorial\b",
+        r"\bcalculate\b",
+        r"\bcompute\b",
+        r"\bsolve\b",
+        r"\bevaluate\b",
+        r"\bconvert\b.*\bto\b",
+        r"\bpercentage\b",
+        r"\bpercent\b",
+        r"\baverage\b",
+        r"\bmean\b",
+        r"\bmedian\b",
+        r"\bstandard deviation\b",
+        r"\bsum of\b",
+        r"\bproduct of\b",
+        r"\bpower of\b",
+        r"\bsquare root\b",
+        r"\bcube root\b",
+        r"\bhow many\b",
+        r"\bhow much\b",
+    ]
+
+    if any(
+        re.search(
+            pattern,
+            text,
+            re.I,
+        )
+        for pattern in computation_patterns
+    ):
+
+        # ----------------------------------------------------
+        # Factorial
+        #
+        # Supports both:
+        #
+        #   25 factorial
+        #   factorial of 25
+        #   what is 25 factorial?
+        # ----------------------------------------------------
+
+        factorial_match = re.search(
+            r"\b(?:factorial\s+of\s+(\d+)|(\d+)\s+factorial)\b",
+            text,
+            re.I,
+        )
+
+        if factorial_match:
+
+            number = (
+                factorial_match.group(1)
+                or factorial_match.group(2)
+            )
+
+            return {
+                "steps": [
+                    {
+                        "type": "tool",
+                        "tool": "python",
+                        "input": (
+                            f"import math; "
+                            f"print(math.factorial({number}))"
+                        ),
+                    }
+                ]
+            }
+
+        # ----------------------------------------------------
+        # General calculation
+        #
+        # IMPORTANT:
+        # Pass the actual user question to the Python tool.
+        # Do not pass an instruction such as:
+        #
+        # "Calculate the requested mathematical operation..."
+        #
+        # because the Python tool executes the supplied input.
+        # ----------------------------------------------------
+
+        return {
+            "steps": [
+                {
+                    "type": "tool",
+                    "tool": "python",
+                    "input": question,
+                }
+            ]
+        }
+
+    # ========================================================
+    # SPECIALIST KEYWORDS
+    # ========================================================
 
     coding_keywords = {
         "python",
@@ -415,6 +464,13 @@ def _fallback_plan(
         "error",
         "api",
         "program",
+        "repository",
+        "github",
+        "function",
+        "class",
+        "debug",
+        "compile",
+        "refactor",
     }
 
     investment_keywords = {
@@ -429,6 +485,8 @@ def _fallback_plan(
         "bitcoin",
         "crypto",
         "valuation",
+        "market cap",
+        "earnings",
     }
 
     business_keywords = {
@@ -441,37 +499,175 @@ def _fallback_plan(
         "revenue",
         "profit",
         "strategy",
+        "enterprise",
+        "pricing",
+        "market",
     }
+
+    research_keywords = {
+        "research",
+        "investigate",
+        "analyze",
+        "analyse",
+        "compare",
+        "comparison",
+        "study",
+        "explain in detail",
+        "deep dive",
+        "find out",
+    }
+
+    current_keywords = {
+        "latest",
+        "current",
+        "today",
+        "recent",
+        "news",
+        "right now",
+        "this week",
+        "this month",
+        "live price",
+        "current price",
+    }
+
+    # ========================================================
+    # CODING
+    # ========================================================
 
     if any(
         keyword in text
         for keyword in coding_keywords
     ):
-        agent = "CODING"
+        return {
+            "steps": [
+                {
+                    "type": "agent",
+                    "agent": "CODING",
+                    "task": question,
+                }
+            ]
+        }
 
-    elif any(
+    # ========================================================
+    # INVESTMENT
+    # ========================================================
+
+    if any(
         keyword in text
         for keyword in investment_keywords
     ):
-        agent = "INVESTMENT"
 
-    elif any(
+        if any(
+            keyword in text
+            for keyword in current_keywords
+        ):
+            return {
+                "steps": [
+                    {
+                        "type": "tool",
+                        "tool": "web_search",
+                        "input": question,
+                    },
+                    {
+                        "type": "agent",
+                        "agent": "INVESTMENT",
+                        "task": question,
+                    },
+                ]
+            }
+
+        return {
+            "steps": [
+                {
+                    "type": "agent",
+                    "agent": "INVESTMENT",
+                    "task": question,
+                }
+            ]
+        }
+
+    # ========================================================
+    # BUSINESS
+    # ========================================================
+
+    if any(
         keyword in text
         for keyword in business_keywords
     ):
-        agent = "BUSINESS"
 
-    else:
-        agent = "RESEARCH"
+        if any(
+            keyword in text
+            for keyword in current_keywords
+        ):
+            return {
+                "steps": [
+                    {
+                        "type": "tool",
+                        "tool": "web_search",
+                        "input": question,
+                    },
+                    {
+                        "type": "agent",
+                        "agent": "BUSINESS",
+                        "task": question,
+                    },
+                ]
+            }
+
+        return {
+            "steps": [
+                {
+                    "type": "agent",
+                    "agent": "BUSINESS",
+                    "task": question,
+                }
+            ]
+        }
+
+    # ========================================================
+    # RESEARCH
+    # ========================================================
+
+    if any(
+        keyword in text
+        for keyword in research_keywords
+    ):
+
+        if any(
+            keyword in text
+            for keyword in current_keywords
+        ):
+            return {
+                "steps": [
+                    {
+                        "type": "tool",
+                        "tool": "web_search",
+                        "input": question,
+                    },
+                    {
+                        "type": "agent",
+                        "agent": "RESEARCH",
+                        "task": question,
+                    },
+                ]
+            }
+
+        return {
+            "steps": [
+                {
+                    "type": "agent",
+                    "agent": "RESEARCH",
+                    "task": question,
+                }
+            ]
+        }
+
+    # ========================================================
+    # UNKNOWN / DIRECT RESPONSE
+    # ========================================================
 
     return {
-        "steps": [
-            {
-                "type": "agent",
-                "agent": agent,
-                "task": question,
-            }
-        ]
+        "steps": [],
     }
 
 
@@ -481,11 +677,10 @@ def create_plan(
     """
     Create and validate a Falcon execution plan.
 
-    The planner is responsible only for planning.
-    It does not execute tools or agents.
+    The planner never executes tools or agents itself.
     """
 
-    question = (
+    question = str(
         question or ""
     ).strip()
 
@@ -493,6 +688,26 @@ def create_plan(
         return {
             "steps": [],
         }
+
+    # ========================================================
+    # DETERMINISTIC FAST-PATHS
+    # ========================================================
+
+    deterministic_plan = _fallback_plan(
+        question
+    )
+
+    if deterministic_plan["steps"]:
+
+        logger.info(
+            "Planner deterministic fast-path selected."
+        )
+
+        return deterministic_plan
+
+    # ========================================================
+    # AI PLANNER
+    # ========================================================
 
     prompt = (
         PLANNER_PROMPT
@@ -518,17 +733,22 @@ def create_plan(
             parsed
         )
 
-        if plan["steps"]:
+        # Empty plans are VALID.
+        if (
+            isinstance(
+                parsed,
+                dict,
+            )
+            and "steps" in parsed
+        ):
             return plan
 
         logger.warning(
-            "Planner returned an empty or invalid plan. "
+            "Planner returned invalid structure. "
             "Using deterministic fallback."
         )
 
-        return _fallback_plan(
-            question
-        )
+        return deterministic_plan
 
     except json.JSONDecodeError:
 
@@ -537,17 +757,13 @@ def create_plan(
             "Using deterministic fallback."
         )
 
-        return _fallback_plan(
-            question
-        )
+        return deterministic_plan
 
     except Exception:
 
-        logger.exception(
-            "Planner failed. "
+        logger.warning(
+            "Planner AI unavailable. "
             "Using deterministic fallback."
         )
 
-        return _fallback_plan(
-            question
-        )
+        return deterministic_plan
