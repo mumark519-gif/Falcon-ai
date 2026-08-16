@@ -10,14 +10,8 @@ from app.agents.research_agent import RESEARCH_PROMPT
 from app.agents.planner import create_plan
 from app.agents.workflow_engine import execute_workflow
 from app.agents.execution_engine import execute_plan
-
-from app.agents.reasoning_engine import (
-    reason_about_plan,
-)
-
-from app.agents.tool_reasoner import (
-    decide_tool_usage,
-)
+from app.agents.reasoning_engine import reason_about_plan
+from app.agents.tool_reasoner import decide_tool_usage
 
 from app.agents.rule_engine import (
     should_use_web,
@@ -33,10 +27,6 @@ from app.agents.collaboration_engine import (
     synthesize_collaboration,
 )
 
-from app.agents.reflection_engine import (
-    reflect,
-)
-
 from app.agents.adaptive_execution_engine import (
     execute_adaptively,
 )
@@ -45,12 +35,13 @@ from app.agents.verification_engine import (
     verify_execution,
 )
 
+from app.agents.reflection_engine import (
+    reflect,
+)
+
 from app.ai_service import ask_ai
 from app.core.logger import logger
-
-from app.services.memory_provider import (
-    MemoryProvider,
-)
+from app.services.memory_provider import MemoryProvider
 
 
 # ============================================================
@@ -72,95 +63,45 @@ AGENT_PROMPTS = {
 # LEGACY SPECIALIST FUNCTIONS
 # ============================================================
 
-def run_business_agent(
-    question: str,
-):
-    """
-    Legacy-compatible direct Business agent.
-    """
-
-    prompt = (
-        BUSINESS_PROMPT
-        + "\n\nUser:\n"
-        + question
-    )
-
+def run_business_agent(question: str):
+    """Run the legacy Business specialist directly."""
+    prompt = BUSINESS_PROMPT + "\n\nUser:\n" + str(question or "")
     return ask_ai(prompt)
 
 
-def run_coding_agent(
-    question: str,
-):
-    """
-    Legacy-compatible direct Coding agent.
-    """
-
-    prompt = (
-        CODING_PROMPT
-        + "\n\nUser:\n"
-        + question
-    )
-
+def run_coding_agent(question: str):
+    """Run the legacy Coding specialist directly."""
+    prompt = CODING_PROMPT + "\n\nUser:\n" + str(question or "")
     return ask_ai(prompt)
 
 
-def run_investment_agent(
-    question: str,
-):
-    """
-    Legacy-compatible direct Investment agent.
-    """
-
-    prompt = (
-        INVESTMENT_PROMPT
-        + "\n\nUser:\n"
-        + question
-    )
-
+def run_investment_agent(question: str):
+    """Run the legacy Investment specialist directly."""
+    prompt = INVESTMENT_PROMPT + "\n\nUser:\n" + str(question or "")
     return ask_ai(prompt)
 
 
-def run_research_agent(
-    question: str,
-):
-    """
-    Legacy-compatible direct Research agent.
-    """
-
-    prompt = (
-        RESEARCH_PROMPT
-        + "\n\nUser:\n"
-        + question
-    )
-
+def run_research_agent(question: str):
+    """Run the legacy Research specialist directly."""
+    prompt = RESEARCH_PROMPT + "\n\nUser:\n" + str(question or "")
     return ask_ai(prompt)
 
 
 # ============================================================
-# INTERNAL HELPERS
+# SAFE NORMALIZATION HELPERS
 # ============================================================
 
-def _safe_dict(
-    value: Any,
-) -> dict:
-    """
-    Convert arbitrary values into a dictionary when possible.
-    """
+def _safe_dict(value: Any) -> dict[str, Any]:
+    """Return a dictionary without raising on unexpected values."""
 
     if isinstance(value, dict):
         return value
 
-    return {
-        "value": value,
-    }
+    return {"value": value}
 
 
-def _safe_list(
-    value: Any,
-) -> list:
-    """
-    Convert arbitrary values into a list.
-    """
+def _safe_list(value: Any) -> list[Any]:
+    """Return a list without raising on unexpected values."""
 
     if value is None:
         return []
@@ -171,31 +112,22 @@ def _safe_list(
     return [value]
 
 
-def _execution_success(
-    execution: dict,
-) -> bool:
+def _execution_success(execution: Any) -> bool:
     """
-    Determine whether adaptive execution produced
-    a successful final result.
+    Determine whether an execution wrapper reports success.
+
+    This intentionally does not treat a merely generated response
+    as successful execution.
     """
 
-    if not isinstance(
-        execution,
-        dict,
-    ):
+    if not isinstance(execution, dict):
         return False
 
-    if execution.get(
-        "successful",
-        False,
-    ):
+    if execution.get("successful") is True:
         return True
 
     status = str(
-        execution.get(
-            "status",
-            "",
-        )
+        execution.get("status", "")
     ).strip().lower()
 
     return status in {
@@ -203,34 +135,30 @@ def _execution_success(
         "complete",
         "completed",
         "success",
+        "successful",
     }
 
 
 def _extract_execution_result(
     adaptive_result: Any,
-) -> dict:
+) -> dict[str, Any]:
     """
-    Extract the actual execution-engine result from the
-    adaptive execution wrapper.
+    Extract the underlying execution result from adaptive execution.
 
-    Adaptive execution returns:
+    Adaptive execution normally returns something similar to:
 
         {
-            "status": ...,
-            "successful": ...,
+            "status": "...",
+            "successful": True,
             "result": {...},
             ...
         }
-
-    This helper safely extracts the nested result.
     """
 
-    if not isinstance(
-        adaptive_result,
-        dict,
-    ):
+    if not isinstance(adaptive_result, dict):
         return {
             "status": "failed",
+            "successful": False,
             "error": (
                 "Adaptive execution returned "
                 "an invalid result."
@@ -240,15 +168,10 @@ def _extract_execution_result(
             "total_steps": 0,
         }
 
-    result = adaptive_result.get(
-        "result"
-    )
+    result = adaptive_result.get("result")
 
-    if isinstance(
-        result,
-        dict,
-    ):
-        return result
+    if isinstance(result, dict):
+        return dict(result)
 
     return {
         "status": str(
@@ -275,165 +198,145 @@ def _extract_execution_result(
             "total_steps",
             0,
         ),
-        "error": adaptive_result.get(
-            "error"
-        ),
+        "error": adaptive_result.get("error"),
     }
 
 
+# ============================================================
+# SYNTHESIS PROMPT
+# ============================================================
+
 def _build_synthesis_prompt(
     question: str,
-    plan: dict,
-    workflow: list,
-    reasoning: dict,
-    tool_reasoning: dict,
+    plan: dict[str, Any],
+    workflow: list[Any],
+    reasoning: dict[str, Any],
+    tool_reasoning: dict[str, Any],
     research_context: Any,
-    collaboration_context: dict,
+    collaboration_context: dict[str, Any],
     collaboration_synthesis: str,
     shared_context: Any,
-    tool_results: dict,
-    agent_results: dict,
-    verification: dict,
-    adaptive_execution: dict,
+    tool_results: dict[str, Any],
+    agent_results: dict[str, Any],
+    verification: dict[str, Any],
+    adaptive_execution: dict[str, Any],
 ) -> str:
     """
-    Build Falcon's final synthesis prompt.
+    Build the final grounded synthesis prompt.
+
+    The prompt is returned to chat_service/model_router rather than
+    generating a second model response inside this orchestrator.
     """
 
-    prompt = """
-You are Falcon AI's Final Synthesis Engine.
+    return f"""
+You are Falcon AI's final answer generation layer.
 
-Your responsibility is to produce the final answer to the
-user using the execution results supplied below.
+Your job is to answer the user's actual request using ONLY the
+available execution evidence supplied below.
 
-The system may have used:
+Do not expose Falcon's internal architecture or hidden reasoning.
 
-- specialist agents
-- web search
-- document search
-- Python
-- browser
-- persistent memory
-- multi-agent collaboration
-- reasoning
-- adaptive execution
-- verification
-- reflection
+IMPORTANT GROUNDING RULES:
 
-Rules:
+1. Never invent facts, actions, tool results, citations, files,
+   searches, calculations, or completed operations.
 
-1. Answer the user's actual question directly.
+2. Never claim that an action happened unless the execution state
+   provides evidence that it happened.
 
-2. Use the strongest available evidence.
+3. If an operation failed, say so clearly.
 
-3. Do not invent facts.
+4. If execution was partial, clearly distinguish completed and
+   incomplete work.
 
-4. Do not claim that a tool was used unless the execution
-   results demonstrate that it actually ran.
+5. If verification failed, do not present the task as fully verified.
 
-5. Distinguish facts from assumptions.
+6. Do not treat a plan as proof that an action was executed.
 
-6. Resolve contradictions when reliable evidence allows it.
+7. Do not treat an intended tool call as a completed tool call.
 
-7. Preserve meaningful uncertainty.
+8. Use research/tool/document results only when they are actually
+   present in the supplied execution state.
 
-8. Do not expose internal Falcon architecture unless it is
-   relevant to the user.
+9. Preserve meaningful uncertainty.
 
-9. Do not mention "agents", "planner", "workflow", or
-   "orchestrator" merely because they were used internally.
+10. Answer the user's request directly.
 
-10. If the user asked for a concrete task, prioritize
-    completing the task rather than describing how Falcon
-    thinks.
+11. Do not mention internal names such as:
+    - orchestrator
+    - planner
+    - workflow
+    - agent
+    - reasoning engine
+    - adaptive execution
+    unless the user explicitly asks about Falcon's architecture.
 
-11. If execution results are incomplete, acknowledge what
-    could not be verified.
+12. Do not expose hidden chain-of-thought.
 
-12. Be clear, useful, accurate, and non-repetitive.
+13. Be concise when the request is simple and detailed when the
+    request requires detail.
 
-13. If only one specialist produced useful information,
-    improve and present that information naturally.
+14. If there is insufficient evidence to complete the request,
+    honestly explain what is missing.
 
-14. If multiple specialists produced useful information,
-    merge them into one coherent answer.
+15. Return ONLY the final user-facing answer.
 
-15. Do not blindly trust a low-confidence result.
+================ USER REQUEST ================
 
-16. Verification information is evidence about whether the
-    execution completed correctly. Do not treat verification
-    as user-facing content unless relevant.
+{question}
 
-17. Return ONLY the final answer.
+================ EXECUTION PLAN ================
 
+{plan}
+
+================ WORKFLOW STATE ================
+
+{workflow}
+
+================ PLAN REASONING ================
+
+{reasoning}
+
+================ TOOL DECISION ================
+
+{tool_reasoning}
+
+================ RESEARCH CONTEXT ================
+
+{research_context}
+
+================ TOOL RESULTS ================
+
+{tool_results}
+
+================ SPECIALIST RESULTS ================
+
+{agent_results}
+
+================ COLLABORATION ================
+
+{collaboration_context}
+
+================ COLLABORATIVE SYNTHESIS ================
+
+{collaboration_synthesis}
+
+================ SHARED CONTEXT ================
+
+{shared_context}
+
+================ VERIFICATION ================
+
+{verification}
+
+================ ADAPTIVE EXECUTION ================
+
+{adaptive_execution}
+
+================ FINAL INSTRUCTION ================
+
+Produce the best accurate answer to the user's request.
 """
-
-    prompt += (
-        "\n\n================ USER QUESTION ================\n"
-        + question
-    )
-
-    prompt += (
-        "\n\n================ EXECUTION PLAN ================\n"
-        + str(plan)
-    )
-
-    prompt += (
-        "\n\n================ WORKFLOW STATE ================\n"
-        + str(workflow)
-    )
-
-    prompt += (
-        "\n\n================ PLAN REASONING ================\n"
-        + str(reasoning)
-    )
-
-    prompt += (
-        "\n\n================ TOOL REASONING ================\n"
-        + str(tool_reasoning)
-    )
-
-    prompt += (
-        "\n\n================ RESEARCH CONTEXT ================\n"
-        + str(research_context)
-    )
-
-    prompt += (
-        "\n\n================ TOOL RESULTS ================\n"
-        + str(tool_results)
-    )
-
-    prompt += (
-        "\n\n================ AGENT RESULTS ================\n"
-        + str(agent_results)
-    )
-
-    prompt += (
-        "\n\n================ COLLABORATION ================\n"
-        + str(collaboration_context)
-    )
-
-    prompt += (
-        "\n\n================ COLLABORATION SYNTHESIS ================\n"
-        + str(collaboration_synthesis)
-    )
-
-    prompt += (
-        "\n\n================ SHARED CONTEXT ================\n"
-        + str(shared_context)
-    )
-
-    prompt += (
-        "\n\n================ VERIFICATION ================\n"
-        + str(verification)
-    )
-
-    prompt += (
-        "\n\n================ ADAPTIVE EXECUTION ================\n"
-        + str(adaptive_execution)
-    )
-
-    return prompt
 
 
 # ============================================================
@@ -444,52 +347,56 @@ def orchestrate(
     db,
     username: str,
     question: str,
-):
+) -> dict[str, Any]:
     """
-    Falcon's central cognitive orchestration pipeline.
+    Canonical Falcon cognitive orchestration pipeline.
 
     Pipeline:
 
-        User
-          ↓
+        User request
+            ↓
         Planner
-          ↓
+            ↓
         Workflow preparation
-          ↓
+            ↓
         Plan reasoning
-          ↓
-        Tool reasoning
-          ↓
-        Rule checks
-          ↓
+            ↓
+        Tool decision
+            ↓
+        Capability checks
+            ↓
         Memory retrieval
-          ↓
+            ↓
         Adaptive execution
-          ↓
+            ↓
         Verification
-          ↓
-        Shared context
-          ↓
+            ↓
+        Research context
+            ↓
         Multi-agent collaboration
-          ↓
+            ↓
         Collaboration synthesis
-          ↓
-        Final synthesis
-          ↓
-        Reflection
-          ↓
-        Final answer
+            ↓
+        Grounded synthesis prompt
+            ↓
+        Model router / chat service
 
-    The orchestrator coordinates the system but does not itself
-    execute individual tools or specialist agents.
+    IMPORTANT:
+
+    This function prepares the grounded synthesis prompt.
+
+    The actual final model response is generated by the caller
+    (currently chat_service) through the central model router.
+
+    This prevents Falcon from unnecessarily generating two final
+    model responses for one chat request.
     """
 
-    question = (
+    question = str(
         question or ""
     ).strip()
 
     if not question:
-
         return {
             "error": True,
             "message": (
@@ -503,82 +410,100 @@ def orchestrate(
     )
 
     try:
-
-        # ====================================================
+        # ========================================================
         # 1. CREATE PLAN
-        # ====================================================
-
-        plan = create_plan(
-            question
-        )
+        # ========================================================
 
         plan = _safe_dict(
-            plan
+            create_plan(question)
         )
 
         logger.info(
-            "Falcon execution plan created: %s",
-            plan,
+            "Falcon execution plan created."
         )
 
-        # ====================================================
+        # ========================================================
         # 2. PREPARE WORKFLOW
-        # ====================================================
+        # ========================================================
 
-        workflow = execute_workflow(
-            plan
-        )
-
-        workflow = _safe_list(
-            workflow
-        )
+        try:
+            workflow = _safe_list(
+                execute_workflow(plan)
+            )
+        except Exception:
+            logger.exception(
+                "Workflow preparation failed."
+            )
+            workflow = []
 
         logger.info(
             "Falcon workflow prepared with %s steps.",
             len(workflow),
         )
 
-        # ====================================================
-        # 3. REASON ABOUT PLAN
-        # ====================================================
+        # ========================================================
+        # 3. PLAN REASONING
+        # ========================================================
 
-        reasoning = reason_about_plan(
-            question=question,
-            plan=plan,
-        )
-
-        reasoning = _safe_dict(
-            reasoning
-        )
-
-        # ====================================================
-        # 4. DETERMINE TOOL REQUIREMENTS
-        # ====================================================
-
-        tool_reasoning = decide_tool_usage(
-            question=question,
-            plan=plan,
-        )
-
-        tool_reasoning = _safe_dict(
-            tool_reasoning
-        )
-
-        # ====================================================
-        # 5. RULE-BASED CAPABILITY CHECKS
-        # ====================================================
-
-        use_web = bool(
-            should_use_web(
-                question
+        try:
+            reasoning = _safe_dict(
+                reason_about_plan(
+                    question=question,
+                    plan=plan,
+                )
             )
-        )
-
-        use_documents = bool(
-            should_use_documents(
-                question
+        except Exception:
+            logger.exception(
+                "Plan reasoning failed."
             )
-        )
+            reasoning = {
+                "status": "unavailable",
+                "error": "Plan reasoning unavailable.",
+            }
+
+        # ========================================================
+        # 4. TOOL DECISION
+        # ========================================================
+
+        try:
+            tool_reasoning = _safe_dict(
+                decide_tool_usage(
+                    question=question,
+                    plan=plan,
+                )
+            )
+        except Exception:
+            logger.exception(
+                "Tool decision failed."
+            )
+            tool_reasoning = {
+                "status": "unavailable",
+                "error": "Tool decision unavailable.",
+            }
+
+        # ========================================================
+        # 5. CAPABILITY CHECKS
+        # ========================================================
+
+        try:
+            use_web = bool(
+                should_use_web(question)
+            )
+        except Exception:
+            logger.exception(
+                "Web capability check failed."
+            )
+            use_web = False
+
+        try:
+            use_documents = bool(
+                should_use_documents(question)
+            )
+        except Exception:
+            logger.exception(
+                "Document capability check failed."
+            )
+            use_documents = False
 
         logger.info(
             "Falcon capability checks: web=%s documents=%s",
@@ -586,22 +511,19 @@ def orchestrate(
             use_documents,
         )
 
-        # ====================================================
-        # 6. RETRIEVE MEMORY
-        # ====================================================
+        # ========================================================
+        # 6. MEMORY RETRIEVAL
+        # ========================================================
 
-        memories = []
+        memories: list[Any] = []
 
         try:
-
-            memories = memory_provider.search(
-                db,
-                username,
-                question,
-            )
-
             memories = _safe_list(
-                memories
+                memory_provider.search(
+                    db,
+                    username,
+                    question,
+                )
             )
 
             logger.info(
@@ -610,43 +532,51 @@ def orchestrate(
             )
 
         except Exception:
-
             logger.exception(
                 "Memory retrieval failed."
             )
-
             memories = []
 
-        # ====================================================
+        # ========================================================
         # 7. ADAPTIVE EXECUTION
-        # ====================================================
+        # ========================================================
 
-        adaptive_result = execute_adaptively(
-            username=username,
-            question=question,
-            plan=plan,
+        try:
+            adaptive_result = execute_adaptively(
+                username=username,
+                question=question,
+                plan=plan,
+                execute_fn=execute_plan,
+                verify_fn=verify_execution,
+                memories=memories,
+                use_web=use_web,
+                use_documents=use_documents,
+            )
 
-            # THIS IS THE IMPORTANT FIX.
-            #
-            # adaptive_execution_engine.py requires
-            # an execute_fn.
-            #
-            # Falcon's existing execution_engine.py provides
-            # execute_plan.
-            execute_fn=execute_plan,
+            adaptive_result = _safe_dict(
+                adaptive_result
+            )
 
-            # Verification is performed inside the adaptive
-            # execution cycle after each successful round.
-            verify_fn=verify_execution,
+        except Exception as exc:
+            logger.exception(
+                "Adaptive execution failed."
+            )
 
-            memories=memories,
-            use_web=use_web,
-            use_documents=use_documents,
-        )
-
-        adaptive_result = _safe_dict(
-            adaptive_result
-        )
+            adaptive_result = {
+                "status": "failed",
+                "successful": False,
+                "error": str(exc),
+                "rounds": 0,
+                "history": [],
+                "recovery": {},
+                "verification": {
+                    "verified": False,
+                    "reason": (
+                        "Adaptive execution failed."
+                    ),
+                },
+                "final_plan": plan,
+            }
 
         logger.info(
             "Falcon adaptive execution finished: "
@@ -665,23 +595,17 @@ def orchestrate(
             ),
         )
 
-        # ====================================================
-        # 8. EXTRACT ACTUAL EXECUTION RESULT
-        # ====================================================
+        # ========================================================
+        # 8. EXTRACT EXECUTION RESULT
+        # ========================================================
 
-        execution_results = (
-            _extract_execution_result(
-                adaptive_result
-            )
+        execution_results = _extract_execution_result(
+            adaptive_result
         )
 
-        execution_results = _safe_dict(
-            execution_results
-        )
-
-        # ====================================================
-        # 9. GET VERIFICATION RESULT
-        # ====================================================
+        # ========================================================
+        # 9. VERIFICATION
+        # ========================================================
 
         verification = adaptive_result.get(
             "verification",
@@ -695,13 +619,34 @@ def orchestrate(
             verification = {
                 "verified": False,
                 "reason": (
-                    "No valid verification result."
+                    "No valid verification result was returned."
                 ),
             }
 
-        # ====================================================
-        # 10. STORE ADAPTIVE EXECUTION METADATA
-        # ====================================================
+        # If adaptive execution did not provide verification,
+        # perform one final deterministic verification pass.
+        if "verified" not in verification:
+            try:
+                verification = _safe_dict(
+                    verify_execution(
+                        question=question,
+                        result=execution_results,
+                    )
+                )
+            except Exception:
+                logger.exception(
+                    "Final verification failed."
+                )
+                verification = {
+                    "verified": False,
+                    "reason": (
+                        "Final verification could not be completed."
+                    ),
+                }
+
+        # ========================================================
+        # 10. ADAPTIVE EXECUTION METADATA
+        # ========================================================
 
         execution_results[
             "adaptive_execution"
@@ -733,17 +678,9 @@ def orchestrate(
             ),
         }
 
-        logger.info(
-            "Falcon execution result status=%s.",
-            execution_results.get(
-                "status",
-                "unknown",
-            ),
-        )
-
-        # ====================================================
-        # 11. EXTRACT RESULTS
-        # ====================================================
+        # ========================================================
+        # 11. EXTRACT TOOL / AGENT / SHARED RESULTS
+        # ========================================================
 
         tool_results = _safe_dict(
             execution_results.get(
@@ -767,9 +704,9 @@ def orchestrate(
             ),
         )
 
-        # ====================================================
-        # 12. BUILD RESEARCH CONTEXT
-        # ====================================================
+        # ========================================================
+        # 12. RESEARCH CONTEXT
+        # ========================================================
 
         web_results = tool_results.get(
             "web",
@@ -780,33 +717,24 @@ def orchestrate(
         )
 
         try:
-
-            research_context = (
-                build_research_context(
-                    web_results
-                )
+            research_context = build_research_context(
+                web_results
             )
-
         except Exception:
-
             logger.exception(
                 "Research context construction failed."
             )
-
             research_context = ""
 
-        # ====================================================
+        # ========================================================
         # 13. MULTI-AGENT COLLABORATION
-        # ====================================================
+        # ========================================================
 
         try:
-
-            collaboration_context = collaborate(
-                agent_results
+            collaboration_context = _safe_dict(
+                collaborate(agent_results)
             )
-
         except Exception:
-
             logger.exception(
                 "Multi-agent collaboration failed."
             )
@@ -818,38 +746,28 @@ def orchestrate(
                 "confidence": 0.0,
             }
 
-        collaboration_context = _safe_dict(
-            collaboration_context
-        )
-
-        # ====================================================
+        # ========================================================
         # 14. COLLABORATIVE SYNTHESIS
-        # ====================================================
+        # ========================================================
 
         try:
-
-            collaboration_synthesis = (
+            collaboration_synthesis = str(
                 synthesize_collaboration(
                     question=question,
                     collaboration=collaboration_context,
                 )
-            )
+                or ""
+            ).strip()
 
         except Exception:
-
             logger.exception(
                 "Collaboration synthesis failed."
             )
-
             collaboration_synthesis = ""
 
-        collaboration_synthesis = str(
-            collaboration_synthesis or ""
-        ).strip()
-
-        # ====================================================
-        # 15. FINAL SYNTHESIS
-        # ====================================================
+        # ========================================================
+        # 15. BUILD GROUNDED SYNTHESIS PROMPT
+        # ========================================================
 
         synthesis_prompt = _build_synthesis_prompt(
             question=question,
@@ -867,55 +785,18 @@ def orchestrate(
             adaptive_execution=adaptive_result,
         )
 
-        draft_answer = ask_ai(
-            synthesis_prompt
-        )
+        # ========================================================
+        # 16. EXECUTION SUMMARY
+        # ========================================================
 
-        draft_answer = str(
-            draft_answer or ""
-        ).strip()
-
-        if not draft_answer:
-
-            draft_answer = (
-                "Falcon completed the requested processing "
-                "but did not receive a usable synthesis."
+        execution_status = str(
+            execution_results.get(
+                "status",
+                adaptive_result.get(
+                    "status",
+                    "unknown",
+                ),
             )
-
-        # ====================================================
-        # 16. REFLECTION / QUALITY CONTROL
-        # ====================================================
-
-        try:
-
-            final_answer = reflect(
-                question=question,
-                draft_answer=draft_answer,
-            )
-
-            final_answer = str(
-                final_answer or ""
-            ).strip()
-
-        except Exception:
-
-            logger.exception(
-                "Reflection engine failed."
-            )
-
-            final_answer = draft_answer
-
-        if not final_answer:
-
-            final_answer = draft_answer
-
-        # ====================================================
-        # 17. FINAL EXECUTION SUMMARY
-        # ====================================================
-
-        execution_status = execution_results.get(
-            "status",
-            "unknown",
         )
 
         completed_steps = execution_results.get(
@@ -938,92 +819,132 @@ def orchestrate(
             ),
         )
 
-        successful_execution = (
-            _execution_success(
-                adaptive_result
-            )
-            and bool(
-                verification.get(
-                    "verified",
-                    False,
-                )
+        adaptive_successful = _execution_success(
+            adaptive_result
+        )
+
+        verified = bool(
+            verification.get(
+                "verified",
+                False,
             )
         )
 
-        # ====================================================
-        # 18. RETURN COMPLETE RESULT
-        # ====================================================
+        successful_execution = (
+            adaptive_successful
+            and verified
+        )
+
+        # ========================================================
+        # 17. OPTIONAL INTERNAL REFLECTION
+        # ========================================================
+
+        reflection = ""
+
+        try:
+            reflection_input = {
+                "status": execution_status,
+                "successful": successful_execution,
+                "completed_steps": completed_steps,
+                "failed_steps": failed_steps,
+                "total_steps": total_steps,
+                "verification": verification,
+                "tools": tool_results,
+                "agents": agent_results,
+            }
+
+            reflection_result = reflect(
+                question=question,
+                draft_answer=str(
+                    reflection_input
+                ),
+            )
+
+            reflection = str(
+                reflection_result or ""
+            ).strip()
+
+        except Exception:
+            logger.exception(
+                "Execution reflection failed."
+            )
+
+        # ========================================================
+        # 18. RETURN COMPLETE ORCHESTRATION STATE
+        # ========================================================
 
         result = {
-            "answer": final_answer,
+            # Compatibility / user-facing field.
+            #
+            # chat_service normally generates the actual answer
+            # through model_router using synthesis_prompt.
+            "answer": "",
 
+            # IMPORTANT:
+            # chat_service.py expects this field.
+            "synthesis_prompt": synthesis_prompt,
+
+            # Structured execution state.
             "execution": {
                 "status": execution_status,
-
                 "successful": successful_execution,
-
                 "adaptive_status": adaptive_result.get(
                     "status",
                     "unknown",
                 ),
-
                 "adaptive_successful": adaptive_result.get(
                     "successful",
                     False,
                 ),
-
                 "adaptive_rounds": adaptive_result.get(
                     "rounds",
                     0,
                 ),
-
                 "verification": verification,
-
                 "plan": plan,
-
                 "workflow": workflow,
-
                 "reasoning": reasoning,
-
                 "tool_reasoning": tool_reasoning,
-
                 "use_web": use_web,
-
                 "use_documents": use_documents,
-
-                "memory_count": len(
-                    memories
-                ),
-
+                "memory_count": len(memories),
                 "results": agent_results,
-
                 "tool_results": tool_results,
-
                 "collaboration": collaboration_context,
-
                 "collaboration_synthesis": (
                     collaboration_synthesis
                 ),
-
                 "shared_context": shared_context,
-
                 "completed_steps": completed_steps,
-
                 "failed_steps": failed_steps,
-
                 "total_steps": total_steps,
-
                 "adaptive_history": adaptive_result.get(
                     "history",
                     [],
                 ),
+                "reflection": reflection,
             },
+
+            # Useful top-level metadata for API consumers.
+            "verification": verification,
+            "plan": plan,
+            "workflow": workflow,
+            "reasoning": reasoning,
+            "tool_reasoning": tool_reasoning,
+            "use_web": use_web,
+            "use_documents": use_documents,
+            "memory_count": len(memories),
+            "collaboration": collaboration_context,
+            "collaboration_synthesis": (
+                collaboration_synthesis
+            ),
         }
 
         logger.info(
             "Falcon orchestration finished: "
-            "status=%s completed=%s failed=%s total=%s",
+            "status=%s successful=%s completed=%s failed=%s total=%s",
             execution_status,
+            successful_execution,
             completed_steps,
             failed_steps,
             total_steps,
@@ -1032,7 +953,6 @@ def orchestrate(
         return result
 
     except Exception as exc:
-
         logger.exception(
             "Falcon orchestrator failed."
         )
@@ -1044,4 +964,5 @@ def orchestrate(
                 "error while completing the request."
             ),
             "details": str(exc),
+            "synthesis_prompt": "",
         }
